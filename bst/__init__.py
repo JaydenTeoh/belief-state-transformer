@@ -30,7 +30,10 @@ class BeliefStateTransformer(nn.Module):
         super().__init__()
 
         if args.load_in_4bit:
-            quantization_config = BitsAndBytesConfig(quantization_bits=4)
+            quantization_config = BitsAndBytesConfig(
+                                    load_in_4bit=True,
+                                    bnb_4bit_compute_dtype=args.ptdtype
+                                )
         else:
             # Assume default or no quantization
             quantization_config = None

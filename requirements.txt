@@ -7,3 +7,4 @@ tqdm>=4.66.1
 wandb>=0.16.2
 peft>=0.14.0
 flash-attn==2.7.2
+bitsandbytes==0.45.0
