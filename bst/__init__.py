@@ -1,6 +1,7 @@
 from transformers import AutoModel, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model
 from utils.training_utils import accuracy
+from torch.nn import functional as F
 import torch.nn as nn
 import torch
 
@@ -52,7 +53,7 @@ class BeliefStateTransformer(nn.Module):
             quantization_config=quantization_config
         )
 
-        # lore adapter config
+        # lora adapter config
         lora_config = LoraConfig(
             r=args.lora_r, 
             lora_alpha=args.lora_alpha, 
@@ -65,6 +66,9 @@ class BeliefStateTransformer(nn.Module):
         # create separate forward and backward lora adapters
         self.model.add_adapter(lora_config, adapter_name="forward_encoder")
         self.model.add_adapter(lora_config, adapter_name="backward_encoder")
+
+        # enable gradient checkpointing to save memory during training
+        self.model.gradient_checkpointing_enable()
 
         # add tied text head for next and previous token predictions
         self.text_head = TiedTextHead(
@@ -190,16 +194,17 @@ class BeliefStateTransformer(nn.Module):
         backward_state = self.model(empty_suffix).last_hidden_state[:, 0:1, :]  # Fixed backward state
 
         # Step 2: Initialize the generated sequence with the prefix
-        generated = idx.clone()
+        out = idx.clone()
 
-        for _ in range(max_new_tokens):
+        for i in range(max_new_tokens):
             # Step 3: Compute forward latent state for current prefix F(x1:t)
             self.model.set_adapter("forward_encoder")
-            forward_states = self.model(generated).last_hidden_state
+            forward_states = self.model(out).last_hidden_state
 
             # Step 4: Compute logits for the next token prediction
             logits = self.text_head(forward_states[:, -1:, :], backward_state)
-            next_logits = logits[:, :self.text_head.output_layer.out_features // 2]
+
+            next_logits = logits[:, 0, :self.text_head.output_layer.out_features // 2]
 
             # Step 5: Apply temperature scaling
             next_logits = next_logits / temperature
@@ -210,13 +215,13 @@ class BeliefStateTransformer(nn.Module):
                 next_logits[next_logits < v[:, [-1]]] = -float('Inf')
 
             # Step 7: Convert logits to probabilities and sample
-            probs = torch.softmax(next_logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)
+            probs = F.softmax(next_logits, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)
 
-            # Step 8: Append the predicted token to the generated sequence
-            generated = torch.cat((generated, next_token), dim=1)
+            # Step 8: Append sampled index to the running sequence
+            out = torch.cat((out, idx_next), dim=1)
 
-        return generated
+        return out
 
     
     # def _create_optimizer(self, lr, weight_decay):

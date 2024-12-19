@@ -79,7 +79,7 @@ parser.add_argument(
         "--eval_train", action=argparse.BooleanOptionalAction, default=False, help="Eval for training set",
     )
 parser.add_argument(
-        "--eval_every", type=int, default=50000, help="Interval (in steps) to evaluate the model on test",
+        "--eval_every", type=int, default=10000, help="Interval (in steps) to evaluate the model on test",
     )
 parser.add_argument(
         "--use_wandb", action=argparse.BooleanOptionalAction, default=False, help="Whether to use wandb",
