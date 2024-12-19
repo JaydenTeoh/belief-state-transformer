@@ -1,4 +1,4 @@
-from transformers import GPT2Model, BitsAndBytesConfig
+from transformers import AutoModel, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model
 from utils.training_utils import accuracy
 import torch.nn as nn
@@ -45,7 +45,7 @@ class BeliefStateTransformer(nn.Module):
         
         # TODO: support more pretrained models
         # import gpt2 with no specific head on top
-        self.model = GPT2Model.from_pretrained(
+        self.model = AutoModel.from_pretrained(
             args.model, 
             attn_implementation=attn_implementation,
             torch_dtype=args.ptdtype,
@@ -150,7 +150,7 @@ class BeliefStateTransformer(nn.Module):
         loss = self.belief_state_objective(forward_states, backward_states, x)
         # compute text head gradients over all prefix/suffix pairs.
         scaled_loss = scaler.scale(loss)
-        scaled_loss.backward()
+        scaled_loss.backward(retain_graph=True)
 
         scaler.unscale_(optimizer) # unscale gradient TODO: check if this is necessary
 

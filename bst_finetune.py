@@ -25,7 +25,7 @@ parser.add_argument(
         "--lora_alpha", type=int, default=32, help="Lora alpha",
     )
 parser.add_argument(
-        "--lora_dropout", type=float, default=0.1, help="Lora dropout",
+        "--lora_dropout", type=float, default=0.05, help="Lora dropout",
     )
 parser.add_argument(
         "--load_in_4bit", action=argparse.BooleanOptionalAction, default=False, help="Load in 4-bit",
@@ -67,7 +67,7 @@ parser.add_argument(
         "--epochs", type=int, default=100, help="Number of epochs",
     )
 parser.add_argument(
-        "--save_every", type=int, default=5000, help="Interval (in steps) at which to save model",
+        "--save_every", type=int, default=100000, help="Interval (in steps) at which to save model",
     )
 parser.add_argument(
         "--teacherless", action=argparse.BooleanOptionalAction, default=False, help="Standard or teacherless training",
@@ -79,7 +79,7 @@ parser.add_argument(
         "--eval_train", action=argparse.BooleanOptionalAction, default=False, help="Eval for training set",
     )
 parser.add_argument(
-        "--eval_every", type=int, default=5000, help="Interval (in steps) to evaluate the model on test",
+        "--eval_every", type=int, default=50000, help="Interval (in steps) to evaluate the model on test",
     )
 parser.add_argument(
         "--use_wandb", action=argparse.BooleanOptionalAction, default=False, help="Whether to use wandb",
@@ -112,7 +112,7 @@ args.ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16':
 beta1 = 0.9
 beta2 = 0.999
 decay_lr = True
-args.compile = False if device == 'cuda' else False
+args.compile = True if device == 'cuda' else False
 args.use_flash = True if device == 'cuda' else False
 warmup_iters = 100
 min_lr = 1e-5
@@ -144,7 +144,7 @@ model.train()
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
-optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0)
+optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 ctx = nullcontext() if device == 'cpu' else torch.amp.autocast(device_type=device, dtype=args.ptdtype)
 
 # Setup wandb logging
@@ -178,15 +178,15 @@ for ep in range(args.epochs):
             'Epoch: [{}/{}] Loss: {:.4f}'.format(ep, args.epochs, total_loss.get())
         )
 
-    # evaluate the loss on train/val sets and write checkpoints
-    if ep % args.eval_every == 0:
-        # Generate sequences and check accuracies
-        if args.eval_train:
-            results = evaluate(model, train_loader, temperature=0.8, top_k=top_k, results=results, mode='train')
-            results = evaluate_forced(model, train_loader, results=results, mode='train')
+        # evaluate the loss on train/val sets and write checkpoints
+        if num_iters % args.eval_every == 0:
+            # Generate sequences and check accuracies
+            if args.eval_train:
+                results = evaluate(model, train_loader, temperature=0.8, top_k=top_k, results=results, mode='train')
+                results = evaluate_forced(model, train_loader, results=results, mode='train')
 
-        results = evaluate(model, test_loader, temperature=0.8, ctx=ctx, top_k=top_k, results=results, mode='test')
-        results = evaluate_forced(model, test_loader, ctx=ctx, results=results, mode='test')
+            results = evaluate(model, test_loader, temperature=0.8, ctx=ctx, top_k=top_k, results=results, mode='test')
+            results = evaluate_forced(model, test_loader, ctx=ctx, results=results, mode='test')
 
-        if wandb_log:
-            wandb.log(results)
+            if wandb_log:
+                wandb.log(results)
