@@ -1,4 +1,4 @@
-from transformers import GPT2Model
+from transformers import GPT2Model, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model
 from utils.training_utils import accuracy
 import torch.nn as nn
@@ -28,16 +28,26 @@ class TiedTextHead(nn.Module):
 class BeliefStateTransformer(nn.Module):
     def __init__(self, args):
         super().__init__()
+
+        if args.load_in_4bit:
+            quantization_config = BitsAndBytesConfig(quantization_bits=4)
+        else:
+            # Assume default or no quantization
+            quantization_config = None
+
+        if args.use_flash:
+            attn_implementation = "flash_attention_2"
+        else:
+            attn_implementation = None
+        
         # TODO: support more pretrained models
         # import gpt2 with no specific head on top
-        if args.use_flash:
-            self.model = GPT2Model.from_pretrained(
-                args.model, 
-                attn_implementation="flash_attention_2",
-                torch_dtype=args.ptdtype
-            )
-        else:
-            self.model = GPT2Model.from_pretrained(args.model)
+        self.model = GPT2Model.from_pretrained(
+            args.model, 
+            attn_implementation=attn_implementation,
+            torch_dtype=args.ptdtype,
+            quantization_config=quantization_config
+        )
 
         # lore adapter config
         lora_config = LoraConfig(

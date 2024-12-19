@@ -28,6 +28,9 @@ parser.add_argument(
         "--lora_dropout", type=float, default=0.1, help="Lora dropout",
     )
 parser.add_argument(
+        "--load_in_4bit", action=argparse.BooleanOptionalAction, default=False, help="Load in 4-bit",
+    )
+parser.add_argument(
     "--dataset", default='graph', type=str, help="Choice of dataset"
     )
 parser.add_argument(
