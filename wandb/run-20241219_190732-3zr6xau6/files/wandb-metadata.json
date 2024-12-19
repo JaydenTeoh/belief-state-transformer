@@ -1,0 +1,57 @@
+{
+    "os": "macOS-13.6.7-arm64-arm-64bit",
+    "python": "3.11.7",
+    "heartbeatAt": "2024-12-19T11:07:34.801032",
+    "startedAt": "2024-12-19T11:07:32.029061",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "--model",
+        "gpt2",
+        "--n_train",
+        "200000",
+        "--n_test",
+        "20000",
+        "--batch_size",
+        "16",
+        "--dataset",
+        "graph",
+        "--deg",
+        "2",
+        "--path",
+        "5",
+        "--num_nodes",
+        "50",
+        "--lr",
+        "0.00001",
+        "--use_wandb"
+    ],
+    "state": "running",
+    "program": "/Users/jaydenteoh/Documents/Research/Microsoft/belief-state-transformer/bst_finetune.py",
+    "codePathLocal": "bst_finetune.py",
+    "codePath": "bst_finetune.py",
+    "git": {
+        "remote": "https://github.com/JaydenTeoh/belief-state-transformer.git",
+        "commit": "b925a1ef7c97f4beb533fd88a843b83932ea0df1"
+    },
+    "email": "t3ohjingxiang@gmail.com",
+    "root": "/Users/jaydenteoh/Documents/Research/Microsoft/belief-state-transformer",
+    "host": "192.168.1.13",
+    "username": "jaydenteoh",
+    "executable": "/opt/anaconda3/bin/python3",
+    "cpu_count": 8,
+    "cpu_count_logical": 8,
+    "disk": {
+        "/": {
+            "total": 460.4317207336426,
+            "used": 282.3227348327637
+        }
+    },
+    "gpuapple": {
+        "type": "arm",
+        "vendor": "Apple"
+    },
+    "memory": {
+        "total": 16.0
+    }
+}

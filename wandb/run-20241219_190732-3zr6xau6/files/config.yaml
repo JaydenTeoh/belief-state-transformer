@@ -1,0 +1,117 @@
+wandb_version: 1
+
+model:
+  desc: null
+  value: gpt2
+lora_r:
+  desc: null
+  value: 16
+lora_alpha:
+  desc: null
+  value: 32
+lora_dropout:
+  desc: null
+  value: 0.1
+dataset:
+  desc: null
+  value: graph
+n_train:
+  desc: null
+  value: 200000
+n_test:
+  desc: null
+  value: 20000
+num_nodes:
+  desc: null
+  value: 50
+deg:
+  desc: null
+  value: 2
+path_len:
+  desc: null
+  value: 5
+mate_in:
+  desc: null
+  value: 2
+unrolled:
+  desc: null
+  value: true
+batch_size:
+  desc: null
+  value: 16
+lr:
+  desc: null
+  value: 1.0e-05
+weight_decay:
+  desc: null
+  value: 0.01
+epochs:
+  desc: null
+  value: 100
+save_every:
+  desc: null
+  value: 5000
+teacherless:
+  desc: null
+  value: false
+reverse:
+  desc: null
+  value: false
+eval_train:
+  desc: null
+  value: false
+eval_every:
+  desc: null
+  value: 5000
+use_wandb:
+  desc: null
+  value: true
+wandb_entity:
+  desc: null
+  value: null
+compile:
+  desc: null
+  value: false
+use_flash:
+  desc: null
+  value: false
+block_size:
+  desc: null
+  value: 45
+vocab_size:
+  desc: null
+  value: 50257
+teacherless_token:
+  desc: null
+  value: null
+_wandb:
+  desc: null
+  value:
+    python_version: 3.11.7
+    cli_version: 0.17.0
+    framework: huggingface
+    huggingface_version: 4.47.1
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1734606452
+    t:
+      1:
+      - 1
+      - 5
+      - 11
+      - 49
+      - 53
+      - 55
+      - 71
+      - 98
+      - 100
+      3:
+      - 16
+      - 23
+      4: 3.11.7
+      5: 0.17.0
+      6: 4.47.1
+      8:
+      - 4
+      - 5
+      13: darwin-arm64
