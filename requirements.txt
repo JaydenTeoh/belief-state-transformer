@@ -1,3 +1,4 @@
+wheel
 torch>=2.2.0
 transformers>=4.37.2
 numpy>=1.26.3
@@ -5,3 +6,4 @@ pandas>=2.2.3
 tqdm>=4.66.1
 wandb>=0.16.2
 peft>=0.14.0
+flash-attn==2.7.2

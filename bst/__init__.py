@@ -31,7 +31,11 @@ class BeliefStateTransformer(nn.Module):
         # TODO: support more pretrained models
         # import gpt2 with no specific head on top
         if args.use_flash:
-            self.model = GPT2Model.from_pretrained(args.model, attn_implementation="flash_attention_2")
+            self.model = GPT2Model.from_pretrained(
+                args.model, 
+                attn_implementation="flash_attention_2",
+                torch_dtype=args.ptdtype
+            )
         else:
             self.model = GPT2Model.from_pretrained(args.model)
 

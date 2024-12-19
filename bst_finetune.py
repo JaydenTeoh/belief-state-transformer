@@ -105,7 +105,7 @@ log_interval = 10
 
 # Optimiser
 dtype = 'float16'
-ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+args.ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 beta1 = 0.9
 beta2 = 0.999
 decay_lr = True
@@ -142,7 +142,7 @@ model.train()
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
 optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0)
-ctx = nullcontext() if device == 'cpu' else torch.amp.autocast(device_type=device, dtype=ptdtype)
+ctx = nullcontext() if device == 'cpu' else torch.amp.autocast(device_type=device, dtype=args.ptdtype)
 
 # Setup wandb logging
 if wandb_log:
