@@ -172,6 +172,13 @@ for ep in range(args.epochs):
             loss = model.update(x, optimizer, scaler)
 
         total_loss.update(loss.item(), x.shape[0] * train_data.num_target_tokens)
+        # Backpropagation with mixed precision
+        scaler.scale(loss).backward()
+
+        # Unscale and update optimizer
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad(set_to_none=True)
         # total_acc.update(accs['acc'], x.shape[0]) # this accuracy include backward encoder embedding
         num_iters += 1
         train_bar.set_description(
@@ -183,10 +190,10 @@ for ep in range(args.epochs):
             # Generate sequences and check accuracies
             if args.eval_train:
                 results = evaluate(model, train_loader, temperature=0.8, top_k=top_k, results=results, mode='train')
-                results = evaluate_forced(model, train_loader, results=results, mode='train')
+                # results = evaluate_forced(model, train_loader, results=results, mode='train')
 
             results = evaluate(model, test_loader, temperature=0.8, ctx=ctx, top_k=top_k, results=results, mode='test')
-            results = evaluate_forced(model, test_loader, ctx=ctx, results=results, mode='test')
+            # results = evaluate_forced(model, test_loader, ctx=ctx, results=results, mode='test')
 
             if wandb_log:
                 wandb.log(results)

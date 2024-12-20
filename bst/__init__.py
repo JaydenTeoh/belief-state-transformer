@@ -141,33 +141,17 @@ class BeliefStateTransformer(nn.Module):
         """
         Efficient training for the BST model.
         """
-        # get forward states and detach from the computation graph
+        # Compute forward states
         self.model.set_adapter("forward_encoder")
-        forward_states = self.model(x).last_hidden_state.detach()
-        forward_states.requires_grad = True
+        forward_states = self.model(x).last_hidden_state
 
-        # get backward states and detach from the computation graph
+        # Compute backward states
         self.model.set_adapter("backward_encoder")
-        backward_states = self.model(x).last_hidden_state.detach()
-        backward_states.requires_grad = True
+        backward_input = torch.flip(x, dims=[1])
+        backward_states = torch.flip(self.model(backward_input).last_hidden_state, dims=[1])
 
+        # Compute the combined loss
         loss = self.belief_state_objective(forward_states, backward_states, x)
-        # compute text head gradients over all prefix/suffix pairs.
-        scaled_loss = scaler.scale(loss)
-        scaled_loss.backward(retain_graph=True)
-
-        scaler.unscale_(optimizer) # unscale gradient TODO: check if this is necessary
-
-        # Update encoders with gradients
-        self.model.set_adapter("forward_encoder")
-        forward_states.backward(forward_states.grad)
-
-        self.model.set_adapter("backward_encoder")
-        backward_states.backward(backward_states.grad)
-
-        scaler.step(optimizer)
-        scaler.update()
-        optimizer.zero_grad(set_to_none=True)
 
         return loss
     
