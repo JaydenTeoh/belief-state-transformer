@@ -152,6 +152,7 @@ class BeliefStateTransformer(nn.Module):
 
         # Compute the combined loss
         loss = self.belief_state_objective(forward_states, backward_states, x)
+        self.model.set_adapter(["forward_encoder", "backward_encoder"]) # IMPORTANT else gradient will only exist for backward_encoder
 
         return loss
     
