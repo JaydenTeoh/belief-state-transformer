@@ -165,6 +165,8 @@ class BeliefStateTransformer(nn.Module):
         self.model.set_adapter("backward_encoder")
         backward_states.backward(_b.grad)
 
+        self.model.set_adapter(["forward_encoder", "backward_encoder"])
+
         scaler.step(optimizer)
         scaler.update()
         optimizer.zero_grad(set_to_none=True)
