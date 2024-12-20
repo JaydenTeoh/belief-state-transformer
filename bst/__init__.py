@@ -10,9 +10,9 @@ class TiedTextHead(nn.Module):
         super().__init__()
         self.shared_mlp = nn.Sequential(
             nn.Linear(input_dim, hidden_size),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
         # output is twice vocab size
         # first half is for next token prediction: x_{t+1}
@@ -60,7 +60,8 @@ class BeliefStateTransformer(nn.Module):
             lora_dropout=args.lora_dropout, 
             # target_modules=["q_proj", "v_proj"],  # apply lora to attention layers
             bias="none",
-            task_type="CAUSAL_LM"
+            task_type="CAUSAL_LM",
+            fan_in_fan_out=True
         )
 
         # create separate forward and backward lora adapters
@@ -111,7 +112,7 @@ class BeliefStateTransformer(nn.Module):
 
         # extract valid indices
         f_idxs, b_idxs = fb_pairs[:, 0], fb_pairs[:, 1]
-        nt_idxs = f_idxs + 1  # indices for next token labels
+        nt_idxs = (combinations[:, 0] + 1)  # indices for next token labels
 
         # gather forward and backward features
         f = forward_states[:, f_idxs]
@@ -144,15 +145,29 @@ class BeliefStateTransformer(nn.Module):
         # Compute forward states
         self.model.set_adapter("forward_encoder")
         forward_states = self.model(x).last_hidden_state
+        _f = forward_states.detach()
+        _f.requires_grad = True
 
         # Compute backward states
         self.model.set_adapter("backward_encoder")
         backward_input = torch.flip(x, dims=[1])
-        backward_states = torch.flip(self.model(backward_input).last_hidden_state, dims=[1])
+        backward_states = self.model(backward_input).last_hidden_state.detach()
+        _b = backward_states.detach()
+        _b.requires_grad = True
 
         # Compute the combined loss
-        loss = self.belief_state_objective(forward_states, backward_states, x)
-        self.model.set_adapter(["forward_encoder", "backward_encoder"]) # IMPORTANT else gradient will only exist for backward_encoder
+        loss = self.belief_state_objective(_f, _b, x)
+        scaler.scale(loss).backward()
+
+        self.model.set_adapter("forward_encoder")
+        forward_states.backward(_f.grad)
+
+        self.model.set_adapter("backward_encoder")
+        backward_states.backward(_b.grad)
+
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad(set_to_none=True)
 
         return loss
     

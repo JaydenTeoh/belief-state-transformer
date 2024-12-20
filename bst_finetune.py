@@ -107,7 +107,7 @@ eval_interval = 5
 log_interval = 10
 
 # Optimiser
-dtype = 'float16'
+dtype = 'float32'
 args.ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 beta1 = 0.9
 beta2 = 0.999
@@ -173,12 +173,12 @@ for ep in range(args.epochs):
 
         total_loss.update(loss.item(), x.shape[0] * train_data.num_target_tokens)
         # Backpropagation with mixed precision
-        scaler.scale(loss).backward()
+        # scaler.scale(loss).backward()
 
-        # Unscale and update optimizer
-        scaler.step(optimizer)
-        scaler.update()
-        optimizer.zero_grad(set_to_none=True)
+        # # Unscale and update optimizer
+        # scaler.step(optimizer)
+        # scaler.update()
+        # optimizer.zero_grad(set_to_none=True)
         # total_acc.update(accs['acc'], x.shape[0]) # this accuracy include backward encoder embedding
         num_iters += 1
         train_bar.set_description(
