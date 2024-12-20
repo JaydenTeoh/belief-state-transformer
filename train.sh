@@ -1,1 +1,1 @@
-python3 bst_finetune.py --model gpt2 --n_train 1000000 --n_test 10000 --batch_size 32 --dataset graph --deg 5 --path 5 --num_nodes 50 --lr 0.00001 --use_wandb --lr 0.0001 --weight_decay 0.01
+python3 bst_finetune.py --model gpt2 --n_train 1000000 --n_test 10000 --batch_size 8 --dataset graph --deg 5 --path 5 --num_nodes 50 --lr 0.00001 --use_wandb --lr 0.0001 --weight_decay 0.01

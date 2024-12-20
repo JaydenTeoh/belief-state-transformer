@@ -151,7 +151,7 @@ class BeliefStateTransformer(nn.Module):
         # Compute backward states
         self.model.set_adapter("backward_encoder")
         backward_input = torch.flip(x, dims=[1])
-        backward_states = self.model(backward_input).last_hidden_state.detach()
+        backward_states = self.model(backward_input).last_hidden_state
         _b = backward_states.detach()
         _b.requires_grad = True
 
