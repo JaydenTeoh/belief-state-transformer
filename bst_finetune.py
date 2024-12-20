@@ -185,6 +185,8 @@ for ep in range(args.epochs):
             'Epoch: [{}/{}] Loss: {:.4f}'.format(ep, args.epochs, total_loss.get())
         )
 
+        wandb.log({"train/loss": loss.item(), "learning_rate": lr, "step": num_iters})
+
         # evaluate the loss on train/val sets and write checkpoints
         if num_iters % args.eval_every == 0:
             # Generate sequences and check accuracies
