@@ -6,7 +6,7 @@ from utils.training_utils import AverageMeter
 
 # Function to evaluate performance when generating
 @torch.no_grad()
-def evaluate(model, loader, ctx, temperature, top_k, results=None, mode='test'):
+def evaluate(model, loader, ctx, temperature, top_k, results=None, mode='test', remove_eos=False):
     """
     Generates sequences (without teacher-forcing) and calculates accuracies
     """
@@ -23,6 +23,8 @@ def evaluate(model, loader, ctx, temperature, top_k, results=None, mode='test'):
     #model.set_cache(loader.dataset.device)
     for x in bar:
         y = x[:, num_prefix_tokens:].clone()
+        if remove_eos:
+            y = y[:, :-1]
         x = x[:, :num_prefix_tokens].clone()
 
         with ctx:

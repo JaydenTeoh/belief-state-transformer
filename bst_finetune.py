@@ -110,13 +110,13 @@ eval_interval = 5
 log_interval = 10
 
 # Optimiser
-dtype = 'float32'
+dtype = 'float16' if args.load_in_4bit else 'torch32'
 args.ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 beta1 = 0.9
 beta2 = 0.999
 decay_lr = True
 args.compile = True if device == 'cuda' else False
-args.use_flash = True if device == 'cuda' else False
+args.use_flash = True if device == 'cuda' and args.load_in_4bit else False
 warmup_iters = 100
 min_lr = 1e-5
 
@@ -197,10 +197,10 @@ for ep in range(args.epochs):
         if num_iters % args.eval_every == 0:
             # Generate sequences and check accuracies
             if args.eval_train:
-                results = evaluate(model, train_loader, temperature=0.8, top_k=top_k, results=results, mode='train')
+                results = evaluate(model, train_loader, temperature=0.8, top_k=top_k, results=results, mode='train', remove_eos=args.add_eos)
                 # results = evaluate_forced(model, train_loader, results=results, mode='train')
 
-            results = evaluate(model, test_loader, temperature=0.8, ctx=ctx, top_k=top_k, results=results, mode='test')
+            results = evaluate(model, test_loader, temperature=0.8, ctx=ctx, top_k=top_k, results=results, mode='test', remove_eos=args.add_eos)
             # results = evaluate_forced(model, test_loader, ctx=ctx, results=results, mode='test')
 
             if wandb_log:

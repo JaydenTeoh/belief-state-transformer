@@ -187,10 +187,10 @@ for ep in range(args.epochs):
     if ep % args.eval_every == 0:
         # Generate sequences and check accuracies
         if args.eval_train:
-            results = evaluate(model, train_loader, temperature=0.8, top_k=top_k, results=results, mode='train')
+            results = evaluate(model, train_loader, temperature=0.8, top_k=top_k, results=results, mode='train', remove_eos=args.add_eos)
             results = evaluate_forced(model, train_loader, results=results, mode='train')
 
-        results = evaluate(model, test_loader, temperature=0.8, ctx=ctx, top_k=top_k, results=results, mode='test')
+        results = evaluate(model, test_loader, temperature=0.8, ctx=ctx, top_k=top_k, results=results, mode='test', remove_eos=args.add_eos)
         results = evaluate_forced(model, test_loader, ctx=ctx, results=results, mode='test')
 
         if wandb_log:

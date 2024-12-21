@@ -26,18 +26,10 @@ class Tokenizer:
         target_len = len(self.encode(data_list[0][1]))
         same_len = True
 
-        if self.add_eos:
-            prefix_len += 1
-            target_len += 1
-
         for prefix, target in data_list:
             prefix = torch.tensor(self.encode(prefix))
             target = torch.tensor(self.encode(target))
 
-            if self.add_eos:
-                prefix = torch.cat([prefix, torch.tensor([self.eos_token_id])])
-                target = torch.cat([target, torch.tensor([self.eos_token_id])])
-            
             if not (len(prefix) == prefix_len and len(target) == target_len):
                 same_len = False
             seq = torch.concatenate([prefix, target], dim=-1).long()
