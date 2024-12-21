@@ -18,6 +18,9 @@ parser.add_argument(
     "--model", default='gpt2', type=str, help="Type of model"
     )
 parser.add_argument(
+    "--add_eos", action=argparse.BooleanOptionalAction, default=False, help="Add eos token to end of tokenized sequence",
+    )
+parser.add_argument(
     "--dataset", default='graph', type=str, help="Choice of dataset"
     )
 parser.add_argument(

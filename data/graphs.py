@@ -120,7 +120,7 @@ def prefix_target_list(filename=None, reverse=False):
 
 
 class Graphs(Dataset):
-    def __init__(self, tokenizer, n_samples, data_path, device, eval=False, teacherless_token=None, reverse=False):
+    def __init__(self, tokenizer, n_samples, data_path, device, eval=False, teacherless_token=None, reverse=False, add_eos=False):
         self.tokenizer = tokenizer
         self.n_samples = n_samples
         self.device = device
@@ -131,6 +131,15 @@ class Graphs(Dataset):
 
         self.data_file = prefix_target_list(self.data_path, reverse=reverse)[:n_samples]
         self.tokenized, self.num_prefix_tokens, self.num_target_tokens = tokenizer.tokenize(self.data_file)
+
+        # Add the EOS token to each sequence
+        if add_eos:
+            eos_token_id = tokenizer.eos_token_id
+            if eos_token_id is None:
+                raise ValueError("Tokenizer does not have an EOS token defined.")
+            
+            for idx in range(len(self.tokenized)):
+                self.tokenized[idx] = torch.cat([self.tokenized[idx], torch.tensor([eos_token_id])])
 
         self.num_tokens = self.num_prefix_tokens + self.num_target_tokens
 

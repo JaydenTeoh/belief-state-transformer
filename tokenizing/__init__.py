@@ -4,11 +4,18 @@ from tokenizing.numeral_tokenizer import NumeralTokenizer
 
 
 class Tokenizer:
-    def __init__(self, encoder, decoder, vocab_size, name=None):
+    def __init__(self, encoder, decoder, vocab_size, name=None, add_eos=False, eos_token=None):
         self.encode = encoder
         self.decode = decoder
         self.vocab_size = vocab_size
         self.name = name
+        self.add_eos = add_eos
+        self.eos_token_id = eos_token
+
+        if add_eos and self.eos_token_id is None:
+            raise ValueError("Tokenizer does not have an EOS token defined.")
+
+        print(f'Adding eos token: {add_eos}, EOS token ID: {self.eos_token_id}')
 
     def tokenize(self, data_list):
         """
@@ -19,9 +26,18 @@ class Tokenizer:
         target_len = len(self.encode(data_list[0][1]))
         same_len = True
 
+        if self.add_eos:
+            prefix_len += 1
+            target_len += 1
+
         for prefix, target in data_list:
             prefix = torch.tensor(self.encode(prefix))
             target = torch.tensor(self.encode(target))
+
+            if self.add_eos:
+                prefix = torch.cat([prefix, torch.tensor([self.eos_token_id])])
+                target = torch.cat([target, torch.tensor([self.eos_token_id])])
+            
             if not (len(prefix) == prefix_len and len(target) == target_len):
                 same_len = False
             seq = torch.concatenate([prefix, target], dim=-1).long()
@@ -42,12 +58,12 @@ def get_tokenizer(args):
         tokenizer = Tokenizer(encoder=t.encode, decoder=t.decode, vocab_size=args.num_nodes + 4, name='numeral')
     elif args.model.startswith('gpt2'):
         t = AutoTokenizer.from_pretrained('gpt2')
-        tokenizer = Tokenizer(encoder=t.encode, decoder=t.decode, vocab_size=50257 , name='gpt2')
+        tokenizer = Tokenizer(encoder=t.encode, decoder=t.decode, vocab_size=50257 , name='gpt2', add_eos=args.add_eos, eos_token=t.eos_token_id)
     elif args.model.startswith('pythia'):
         t = AutoTokenizer.from_pretrained('EleutherAI/' + args.model)
-        tokenizer = Tokenizer(encoder=t.encode, decoder=t.decode, vocab_size=50304, name='gpt2')
+        tokenizer = Tokenizer(encoder=t.encode, decoder=t.decode, vocab_size=50304, name='gpt2', add_eos=args.add_eos, eos_token=t.eos_token_id)
     elif args.model.startswith('phi'):
         t = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
-        tokenizer = Tokenizer(encoder=t.encode, decoder=t.decode, vocab_size=51200, name='phi')
+        tokenizer = Tokenizer(encoder=t.encode, decoder=t.decode, vocab_size=51200, name='phi', add_eos=args.add_eos, eos_token=t.eos_token_id)
 
     return tokenizer

@@ -31,6 +31,9 @@ parser.add_argument(
         "--load_in_4bit", action=argparse.BooleanOptionalAction, default=False, help="Load in 4-bit",
     )
 parser.add_argument(
+        "--add_eos", action=argparse.BooleanOptionalAction, default=False, help="Add eos token to end of tokenized sequence",
+    )
+parser.add_argument(
     "--dataset", default='graph', type=str, help="Choice of dataset"
     )
 parser.add_argument(
@@ -121,7 +124,10 @@ run_name = get_run_name(args)
 path = './checkpoints/' + run_name + '.pt'
 
 # Get tokenizer and de-tokenizer
+args.add_eos = True # IMPORTANT: add eos token to the end of the sequence for BST training
 tokenizer = get_tokenizer(args)
+if args.add_eos: # IMPORTANT: eos token for BST suffix during generation
+    args.eos_token_id = tokenizer.eos_token_id
 train_data, test_data = get_dataset(args, tokenizer, device)
 
 train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True)

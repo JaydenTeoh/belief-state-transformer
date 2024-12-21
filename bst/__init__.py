@@ -30,6 +30,9 @@ class BeliefStateTransformer(nn.Module):
     def __init__(self, args):
         super().__init__()
 
+        assert args.eos_token_id is not None, "Please provide the EOS token ID for backward encoder null suffix."
+        self.eos_token_id = args.eos_token_id
+
         if args.load_in_4bit:
             quantization_config = BitsAndBytesConfig(
                                     load_in_4bit=True,
@@ -191,7 +194,7 @@ class BeliefStateTransformer(nn.Module):
         device = idx.device
 
         # Step 1: Precompute backward latent state for empty suffix B(∅)
-        empty_suffix = torch.zeros((bsz, 1), dtype=idx.dtype, device=device)
+        empty_suffix = torch.full((bsz, 1), self.eos_token_id, dtype=idx.dtype, device=device)
         self.model.set_adapter("backward_encoder")
         backward_state = self.model(empty_suffix).last_hidden_state[:, 0:1, :]  # Fixed backward state
 

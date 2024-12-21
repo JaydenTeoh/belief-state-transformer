@@ -19,6 +19,9 @@ parser.add_argument(
         "--model", type=str, default='gpt', help="Learning rate",
     )
 parser.add_argument(
+        "--add_eos", action=argparse.BooleanOptionalAction, default=False, help="Add eos token to end of tokenized sequence",
+    )
+parser.add_argument(
         "--n_layer", type=int, default=6, help="Number of layers",
     )
 parser.add_argument(
