@@ -143,7 +143,8 @@ class Graphs(Dataset):
             return self.tokenized[idx].to(self.device)
 
         # Create inputs
-        x = self.tokenized[idx][:-1].clone()
+        # x = self.tokenized[idx][:-1].clone()
+        x = self.tokenized[idx].clone() # TODO: make sure this is correct, we want to include the last token
         if self.teacherless_token is not None:
             x[self.num_prefix_tokens:] = self.teacherless_token
             x = x.to(self.device)
