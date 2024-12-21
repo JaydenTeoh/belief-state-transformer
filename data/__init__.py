@@ -23,9 +23,9 @@ def get_dataset(args, tokenizer, device):
                     str(args.num_nodes)
         train_path, test_path = data_path + f'_train_{str(args.n_train)}.txt', data_path + f'_test_{str(args.n_test)}.txt'
         train_data = Graphs(tokenizer=tokenizer, n_samples=args.n_train, data_path=train_path, device=device,
-                            teacherless_token=teacherless_token, reverse=args.reverse)
+                            teacherless_token=teacherless_token, reverse=args.reverse, add_eos=args.add_eos)
         test_data = Graphs(tokenizer=tokenizer, n_samples=args.n_test, data_path=test_path, device=device,
-                           teacherless_token=teacherless_token, reverse=args.reverse)
+                           teacherless_token=teacherless_token, reverse=args.reverse, add_eos=args.add_eos)
 
     return train_data, test_data
 

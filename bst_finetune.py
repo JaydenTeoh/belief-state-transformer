@@ -110,7 +110,7 @@ eval_interval = 5
 log_interval = 10
 
 # Optimiser
-dtype = 'float16' if args.load_in_4bit else 'torch32'
+dtype = 'float16' if args.load_in_4bit else 'float32'
 args.ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 beta1 = 0.9
 beta2 = 0.999
@@ -126,7 +126,7 @@ path = './checkpoints/' + run_name + '.pt'
 # Get tokenizer and de-tokenizer
 args.add_eos = True # IMPORTANT: add eos token to the end of the sequence for BST training
 tokenizer = get_tokenizer(args)
-if args.add_eos: # IMPORTANT: eos token for BST suffix during generation
+if args.add_eos: # IMPORTANT: eos token for null BST suffix during generation
     args.eos_token_id = tokenizer.eos_token_id
 train_data, test_data = get_dataset(args, tokenizer, device)
 
