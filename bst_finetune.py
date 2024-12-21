@@ -175,7 +175,7 @@ for ep in range(args.epochs):
             param_group['lr'] = lr
 
         with ctx:
-            loss = model.update(x, optimizer, scaler)
+            loss = model.update(x, y, optimizer, scaler)
 
         total_loss.update(loss.item(), x.shape[0] * train_data.num_target_tokens)
         # Backpropagation with mixed precision
