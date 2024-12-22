@@ -124,12 +124,12 @@ class GradNormLossWeighter(nn.Module):
             gradient_target = grad_norm_average.repeat(self.num_losses).detach()
 
         grad_norm_loss = F.l1_loss(grad_norms, gradient_target) * scale
-        grad_norm_loss.backward(retain_graph=True, **backward_kwargs)
+        grad_norm_loss.backward(**backward_kwargs)
 
         # accumulate gradients
         self.loss_weights_grad.add_(loss_weights.grad)
 
-        # manually take a single gradient step
+        # manually take a single gradient step and normalize weights
         updated_loss_weights = loss_weights - self.loss_weights_grad * self.learning_rate
         renormalized_loss_weights = l1norm(updated_loss_weights) * self.loss_weights_sum
         self.loss_weights.copy_(renormalized_loss_weights)

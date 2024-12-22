@@ -1,4 +1,4 @@
-from transformers import AutoModel, BitsAndBytesConfig
+from transformers import AutoModel, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model
 from utils.training_utils import accuracy
 from bst.grad_norm import GradNormLossWeighter
@@ -52,21 +52,24 @@ class BeliefStateTransformer(nn.Module):
             attn_implementation = None
         
         # TODO: support more pretrained models
-        # import gpt2 with no specific head on top
-        self.model = AutoModel.from_pretrained(
+        # import gpt2, has to be a causal LM else LoraConfig will throw an error
+        self.model = AutoModelForCausalLM.from_pretrained(
             args.model, 
             attn_implementation=attn_implementation,
             torch_dtype=args.ptdtype,
             quantization_config=quantization_config,
             device_map="auto"
         )
+        del self.model.lm_head
 
         # lora adapter config
         lora_config = LoraConfig(
             r=args.lora_r, 
             lora_alpha=args.lora_alpha, 
             lora_dropout=args.lora_dropout, 
-            # target_modules=["q_proj", "v_proj"],  # apply lora to attention layers
+            target_modules=["c_attn"],  # apply lora to attention layers
+            layers_to_transform=[8,9,10,11],
+            layers_pattern="h",
             bias="none",
             task_type="CAUSAL_LM",
             fan_in_fan_out=True
