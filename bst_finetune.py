@@ -22,7 +22,7 @@ parser.add_argument(
         "--lora_r", type=int, default=16, help="Lora r",
     )
 parser.add_argument(
-        "--lora_alpha", type=int, default=32, help="Lora alpha",
+        "--lora_alpha", type=int, default=16, help="Lora alpha",
     )
 parser.add_argument(
         "--lora_dropout", type=float, default=0.05, help="Lora dropout",
@@ -148,9 +148,11 @@ if args.compile:
 model.to(device)
 model.train()
 
+print(f"Number of trainable parameters: {model.get_num_params()}")
+
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
-optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, betas=(beta1, beta2))
 ctx = nullcontext() if device == 'cpu' else torch.amp.autocast(device_type=device, dtype=args.ptdtype)
 
 # Setup wandb logging

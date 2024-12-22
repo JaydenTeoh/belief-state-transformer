@@ -53,7 +53,8 @@ class BeliefStateTransformer(nn.Module):
             args.model, 
             attn_implementation=attn_implementation,
             torch_dtype=args.ptdtype,
-            quantization_config=quantization_config
+            quantization_config=quantization_config,
+            device_map="auto"
         )
 
         # lora adapter config
@@ -82,6 +83,10 @@ class BeliefStateTransformer(nn.Module):
                             vocab_size=args.vocab_size,
                             # tied_weights=self.model.transformer.wte.weight  # use input embeddings' weights
                         )
+        
+    def get_num_params(self):
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return trainable_params
 
     def forward(self, f, b):
         # forward encoding
