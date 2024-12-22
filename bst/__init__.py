@@ -145,11 +145,15 @@ class BeliefStateTransformer(nn.Module):
         # all next and previous token predictions together, aligning with the paper
         # ignore_index=-1 is used to skip the gradient contributions from unnecessary tokens in target
         loss = nn.CrossEntropyLoss(ignore_index=-1)(logits, single_labels)
-        logits = logits.view(bs, fb_numpairs * 2, self.vocab_size)
-        single_labels = single_labels.view(bs, fb_numpairs * 2)
-        acc, token_acc = accuracy(logits, single_labels)
-        accs = {"acc": acc, "token_acc": token_acc}
-        return logits, loss, accs
+
+        # calculate accuracy
+        valid_mask = single_labels != -1
+        filtered_logits = logits[valid_mask]
+        filtered_labels = single_labels[valid_mask]
+        predictions = torch.argmax(filtered_logits, dim=-1)
+        correct = predictions.eq(filtered_labels).to(torch.float)
+        acc = correct.mean()
+        return logits, loss, acc
     
     def update(self, x, y, optimizer, scaler):
         """
@@ -169,7 +173,7 @@ class BeliefStateTransformer(nn.Module):
         _b.requires_grad = True
 
         # Compute the combined loss
-        logits, loss, accs = self.belief_state_objective(_f, _b, x, y) # use the orig seq, i.e. x, as targets
+        logits, loss, acc = self.belief_state_objective(_f, _b, x, y) # use the orig seq, i.e. x, as targets
         scaler.scale(loss).backward()
 
         self.model.set_adapter("forward_encoder")
@@ -184,7 +188,7 @@ class BeliefStateTransformer(nn.Module):
         scaler.update()
         optimizer.zero_grad(set_to_none=True)
 
-        return logits, loss, accs
+        return logits, loss, acc
     
     # def star_graph_update(self, x, targets, optimizer, scaler, num_prefix_tokens, num_target_tokens):
     #     """

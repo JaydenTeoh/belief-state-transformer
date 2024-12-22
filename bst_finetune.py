@@ -175,10 +175,10 @@ for ep in range(args.epochs):
             param_group['lr'] = lr
 
         with ctx:
-            logits, loss, accs = model.update(x, y, optimizer, scaler)
+            logits, loss, acc = model.update(x, y, optimizer, scaler)
 
         total_loss.update(loss.item(), x.shape[0] * train_data.num_target_tokens)
-        total_acc.update(accs['acc'], x.shape[0] * train_data.num_target_tokens)
+        total_acc.update(acc, x.shape[0] * train_data.num_target_tokens)
         # Backpropagation with mixed precision
         # scaler.scale(loss).backward()
 
@@ -189,10 +189,11 @@ for ep in range(args.epochs):
         # total_acc.update(accs['acc'], x.shape[0]) # this accuracy include backward encoder embedding
         num_iters += 1
         train_bar.set_description(
-            'Epoch: [{}/{}] Loss: {:.4f}'.format(ep, args.epochs, total_loss.get())
+            'Epoch: [{}/{}] Loss: {:.4f} Acc: {:.2f}'.format(ep, args.epochs, total_loss.get(),
+             total_acc.get(percentage=True))
         )
 
-        wandb.log({"train/loss": loss.item(), "train/acc": accs['acc'], "learning_rate": lr, "step": num_iters})
+        wandb.log({"train/loss": loss.item(), "train/acc": acc, "learning_rate": lr, "step": num_iters})
 
         # evaluate the loss on train/val sets and write checkpoints
         if num_iters % args.eval_every == 0:
