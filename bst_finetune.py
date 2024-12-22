@@ -37,6 +37,9 @@ parser.add_argument(
         "--gradnorm_alpha", type=float, default=0.12, help="GradNorm alpha",
     )
 parser.add_argument(
+        "--gradnorm_init_loss_decay", type=float, default=0.9, help="GradNorm alpha",
+    )
+parser.add_argument(
         "--clip_gradients", action=argparse.BooleanOptionalAction, default=False, help="Use gradient clipping",
     )
 parser.add_argument(

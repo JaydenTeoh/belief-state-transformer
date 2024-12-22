@@ -59,7 +59,7 @@ class GradNormLossWeighter(nn.Module):
         self.initial_losses_decay = initial_losses_decay
         self.register_buffer('initial_losses', torch.zeros(num_losses))
 
-        loss_weights = torch.ones((num_losses,), dtype = torch.float32)
+        loss_weights = torch.ones((num_losses,))
         self.register_buffer('loss_weights', loss_weights)
         self.register_buffer('loss_weights_sum', self.loss_weights.sum()) # for renormalizing loss weights at end
         self.register_buffer('loss_weights_grad', torch.zeros_like(loss_weights), persistent = False) # for gradient accumulation
@@ -87,7 +87,7 @@ class GradNormLossWeighter(nn.Module):
             self.to(losses.device)
 
         total_weighted_loss = (losses * self.loss_weights.detach()).sum() * scale
-        total_weighted_loss.backward(retain_graph=True, **backward_kwargs)
+        total_weighted_loss.backward(**backward_kwargs)
 
         if self.has_restoring_force:
             if not self.initted.item():
@@ -108,10 +108,9 @@ class GradNormLossWeighter(nn.Module):
         grad_norms = []
         loss_weights = self.loss_weights.clone()
         loss_weights = Parameter(loss_weights)
-        for weight, loss in zip(loss_weights, losses):
-            gradients, = grad(weight * loss, grad_norm_tensor, create_graph = True, retain_graph = True)
-            grad_norm = gradients.norm(p=2)
-            grad_norms.append(grad_norm)
+        all_losses = (loss_weights * losses).sum()
+        gradients = grad(all_losses, grad_norm_tensor, create_graph=True, retain_graph=True)[0]
+        grad_norms = gradients.view(self.num_losses, -1).norm(p=2, dim=1)
 
         grad_norms = torch.stack(grad_norms)
 
@@ -128,7 +127,7 @@ class GradNormLossWeighter(nn.Module):
             gradient_target = grad_norm_average.repeat(self.num_losses).detach()
 
         grad_norm_loss = F.l1_loss(grad_norms, gradient_target) * scale
-        grad_norm_loss.backward(retain_graph=True, **backward_kwargs)
+        grad_norm_loss.backward(**backward_kwargs)
 
         # accumulate gradients
         self.loss_weights_grad.add_(loss_weights.grad)

@@ -93,7 +93,8 @@ class BeliefStateTransformer(nn.Module):
                 num_losses=2,  # next and prev token prediction tasks
                 learning_rate=args.gradnorm_lr,  # a small learning rate for GradNorm updates
                 restoring_force_alpha=args.gradnorm_alpha,  # hyperparameter to control task balancing
-                grad_norm_parameters=backbone_parameter # update the loss weights wrt activations of last shared layer
+                grad_norm_parameters=backbone_parameter, # update the loss weights wrt activations of last shared layer
+                initial_losses_decay=args.gradnorm_init_loss_decay  # decay factor for determining initial losses
             )
 
         # gradient clipping
@@ -231,13 +232,13 @@ class BeliefStateTransformer(nn.Module):
 
         # Compute the combined loss
         logits, losses, accs = self.belief_state_objective(_f, _b, x, y)
-        # have to scale losses independently
-        loss = torch.stack((scaler.scale(losses["next_loss"]), scaler.scale(losses["prev_loss"])), dim=0)
         if self.use_grad_norm:
-            final_loss = self.gradnorm_weighter.backward(loss)
+            # have to scale losses independently
+            loss = torch.stack((scaler.scale(losses["next_loss"]), scaler.scale(losses["prev_loss"])), dim=0)
+            loss = self.gradnorm_weighter.backward(loss)
         else:
+            loss = scaler.scale(losses["orig_loss"])
             loss.backward()
-            final_loss = loss
 
         self.model.set_adapter("forward_encoder")
         forward_states.backward(_f.grad)
@@ -268,7 +269,7 @@ class BeliefStateTransformer(nn.Module):
         scaler.update()
         optimizer.zero_grad(set_to_none=True)
 
-        return logits, final_loss, accs
+        return logits, loss, accs
     
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=1):
