@@ -112,8 +112,6 @@ class GradNormLossWeighter(nn.Module):
         gradients = grad(all_losses, grad_norm_tensor, create_graph=True, retain_graph=True)[0]
         grad_norms = gradients.view(self.num_losses, -1).norm(p=2, dim=1)
 
-        grad_norms = torch.stack(grad_norms)
-
         # main algorithm for loss balancing
         grad_norm_average = maybe_distributed_mean(grad_norms.mean())
 
