@@ -60,7 +60,7 @@ class BeliefStateTransformer(nn.Module):
             quantization_config=quantization_config,
             device_map="auto"
         )
-        del self.model.lm_head
+        self.model.lm_head = nn.Identity() # we will use a custom text head
 
         # lora adapter config
         lora_config = LoraConfig(
@@ -68,7 +68,7 @@ class BeliefStateTransformer(nn.Module):
             lora_alpha=args.lora_alpha, 
             lora_dropout=args.lora_dropout, 
             target_modules=["c_attn"],  # apply lora to attention layers
-            layers_to_transform=[8,9,10,11],
+            layers_to_transform=[5,6,7,10,11],
             layers_pattern="h",
             bias="none",
             task_type="CAUSAL_LM",
@@ -109,6 +109,10 @@ class BeliefStateTransformer(nn.Module):
         
         # miscellanous
         self.wandb_logging = args.use_wandb
+
+    def get_latent_states(self, x):
+        # forward pass through the base transformer model, ignore the lm_head
+        return self.model.transformer(x)
         
     def get_num_params(self):
         trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -117,12 +121,12 @@ class BeliefStateTransformer(nn.Module):
     def forward(self, f, b):
         # forward encoding
         self.model.set_adapter("forward_encoder")
-        forward_states = self.model(f).last_hidden_state  # get forward states
+        forward_states = self.get_latent_states(f).last_hidden_state  # get forward states
 
         # backward encoding
         self.model.set_adapter("backward_encoder")
         backward_input = torch.flip(b, dims=[1])  # reverse the input sequence
-        backward_states = self.model(backward_input).last_hidden_state
+        backward_states = self.get_latent_states(backward_input).last_hidden_state
         backward_states = torch.flip(backward_states, dims=[1])  # flip the backward states back
 
         # Text head for next and previous token predictions
@@ -222,14 +226,14 @@ class BeliefStateTransformer(nn.Module):
         """
         # Compute forward states
         self.model.set_adapter("forward_encoder")
-        forward_states = self.model(x).last_hidden_state
+        forward_states = self.get_latent_states(x).last_hidden_state
         _f = forward_states.detach()
         _f.requires_grad = True
 
         # Compute backward states
         self.model.set_adapter("backward_encoder")
         backward_input = torch.flip(x, dims=[1])
-        backward_states = self.model(backward_input).last_hidden_state
+        backward_states = self.get_latent_states(backward_input).last_hidden_state
         _b = backward_states.detach()
         _b.requires_grad = True
 
@@ -294,7 +298,7 @@ class BeliefStateTransformer(nn.Module):
         # Step 1: Precompute backward latent state for empty suffix B(∅)
         empty_suffix = torch.full((bsz, 1), self.eos_token_id, dtype=idx.dtype, device=device)
         self.model.set_adapter("backward_encoder")
-        backward_state = self.model(empty_suffix).last_hidden_state[:, 0:1, :]  # Fixed backward state
+        backward_state = self.get_latent_states(empty_suffix).last_hidden_state[:, 0:1, :]  # Fixed backward state
 
         # Step 2: Initialize the generated sequence with the prefix
         out = idx.clone()
@@ -302,7 +306,7 @@ class BeliefStateTransformer(nn.Module):
         for i in range(max_new_tokens):
             # Step 3: Compute forward latent state for current prefix F(x1:t)
             self.model.set_adapter("forward_encoder")
-            forward_states = self.model(out).last_hidden_state
+            forward_states = self.get_latent_states(out).last_hidden_state
 
             # Step 4: Compute logits for the next token prediction
             logits = self.text_head(forward_states[:, -1:, :], backward_state)
