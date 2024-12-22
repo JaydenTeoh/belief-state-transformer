@@ -1,6 +1,7 @@
 from transformers import AutoModel, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model
 from utils.training_utils import accuracy
+from bst.grad_norm import GradNormLossWeighter
 from torch.nn import functional as F
 import torch.nn as nn
 import torch
@@ -13,17 +14,17 @@ class TiedTextHead(nn.Module):
             nn.Linear(input_dim, hidden_size),
             nn.LeakyReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.LeakyReLU()
         )
         # output is twice vocab size
         # first half is for next token prediction: x_{t+1}
         # second half is for previous token prediction: x_{t+k-1}
-        self.output_layer = nn.Linear(hidden_size, vocab_size * 2)
+        self.output_layer = nn.Linear(hidden_size, vocab_size * 2, bias=False)
 
     def forward(self, f, b):
         combined = torch.cat([f, b], dim=-1)
         shared_output = self.shared_mlp(combined)
         logits = self.output_layer(shared_output)
+
         return logits
 
 
@@ -75,9 +76,6 @@ class BeliefStateTransformer(nn.Module):
         self.model.add_adapter(lora_config, adapter_name="forward_encoder")
         self.model.add_adapter(lora_config, adapter_name="backward_encoder")
 
-        # enable gradient checkpointing to save memory during training
-        self.model.gradient_checkpointing_enable()
-
         # add tied text head for next and previous token predictions
         self.vocab_size = args.vocab_size
         self.text_head = TiedTextHead(
@@ -86,6 +84,24 @@ class BeliefStateTransformer(nn.Module):
                             vocab_size=args.vocab_size,
                             # tied_weights=self.model.transformer.wte.weight  # use input embeddings' weights
                         )
+
+        # GradNorm
+        self.use_grad_norm = args.use_grad_norm
+        if self.use_grad_norm:
+            backbone_parameter = self.text_head.shared_mlp[-1].weight
+            self.gradnorm_weighter = GradNormLossWeighter(
+                num_losses=2,  # next and prev token prediction tasks
+                learning_rate=args.gradnorm_lr,  # a small learning rate for GradNorm updates
+                restoring_force_alpha=args.gradnorm_alpha,  # hyperparameter to control task balancing
+                grad_norm_parameters=backbone_parameter # update the loss weights wrt activations of last shared layer
+            )
+
+        # gradient clipping
+        self.clip_gradients = args.clip_gradients
+        self.clip_grad_norm = args.clip_grad_norm
+
+        # enable gradient checkpointing to save memory during training
+        self.model.gradient_checkpointing_enable()
         
         # miscellanous
         self.wandb_logging = args.use_wandb
@@ -147,23 +163,30 @@ class BeliefStateTransformer(nn.Module):
         fb_numpairs = fb_pairs.shape[0]  # no of valid forward-backward pairs
 
         # reshape logits and labels for loss computation
-        logits = logits.reshape((bs, fb_numpairs, 2, -1))  # split into next and previous logits
-        logits = logits.reshape((bs * fb_numpairs * 2, -1))  # flatten for CEL
-        single_labels = single_labels.reshape((bs * fb_numpairs * 2))  # flatten labels
+        logits = logits.view(bs, fb_numpairs, 2, -1)  # split into next and previous logits
+
+        # flatten logits and labels
+        next_logits = logits[:, :, 0, :].reshape(-1, logits.size(-1)) 
+        prev_logits = logits[:, :, 1, :].reshape(-1, logits.size(-1)) 
+
+        single_labels = single_labels.view(bs, fb_numpairs, 2)
+        next_labels = single_labels[:, :, 0].reshape(-1) 
+        prev_labels = single_labels[:, :, 1].reshape(-1)
 
         # compute the loss independently for next and previous token predictions
         # this also sums the negative log likelihood for 
         # all next and previous token predictions together, aligning with the paper
         # ignore_index=-1 is used to skip the gradient contributions from unnecessary tokens in target
-        loss = nn.CrossEntropyLoss(ignore_index=-1)(logits, single_labels)
+        next_loss = F.cross_entropy(next_logits, next_labels, ignore_index=-1)
+        prev_loss = F.cross_entropy(prev_logits, prev_labels, ignore_index=-1)
+
+        losses = {
+            "next_loss": next_loss,
+            "prev_loss": prev_loss, 
+            "orig_loss": next_loss + prev_loss
+        }
 
         # calculate accuracy
-        logits_reshaped = logits.view(-1, 2, logits.size(-1))
-        next_logits = logits_reshaped[:, 0, :]
-        prev_logits = logits_reshaped[:, 1, :]
-
-        next_labels = single_labels.view(-1, 2)[:, 0] 
-        prev_labels = single_labels.view(-1, 2)[:, 1] 
         next_mask = next_labels != -1
         prev_mask = prev_labels != -1
 
@@ -181,8 +204,13 @@ class BeliefStateTransformer(nn.Module):
             next_correct.sum() + prev_correct.sum()
         ).item() / total_valid_tokens.item()
 
-        accs = {"acc": overall_acc, "forward_acc": next_acc, "backward_acc": prev_acc}
-        return logits, loss, accs
+        accs = {
+            "acc": overall_acc, 
+            "forward_acc": next_acc, 
+            "backward_acc": prev_acc
+        }
+    
+        return logits, losses, accs
     
     def update(self, x, y, optimizer, scaler):
         """
@@ -202,8 +230,14 @@ class BeliefStateTransformer(nn.Module):
         _b.requires_grad = True
 
         # Compute the combined loss
-        logits, loss, accs = self.belief_state_objective(_f, _b, x, y)
-        scaler.scale(loss).backward()
+        logits, losses, accs = self.belief_state_objective(_f, _b, x, y)
+        # have to scale losses independently
+        loss = torch.stack((scaler.scale(losses["next_loss"]), scaler.scale(losses["prev_loss"])), dim=0)
+        if self.use_grad_norm:
+            final_loss = self.gradnorm_weighter.backward(loss)
+        else:
+            loss.backward()
+            final_loss = loss
 
         self.model.set_adapter("forward_encoder")
         forward_states.backward(_f.grad)
@@ -212,52 +246,29 @@ class BeliefStateTransformer(nn.Module):
         backward_states.backward(_b.grad)
 
         self.model.set_adapter(["forward_encoder", "backward_encoder"])
+        
+        # gradient clipping
+        if self.clip_gradients:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(self.parameters(), self.clip_grad_norm)
 
         if self.wandb_logging:
             forward_grad_norm = torch.norm(torch.cat([p.grad.flatten() for n, p in self.named_parameters() if "forward_encoder" in n and p.grad is not None]))
             backward_grad_norm = torch.norm(torch.cat([p.grad.flatten() for n, p in self.named_parameters() if "backward_encoder" in n and p.grad is not None]))
-            wandb.log({"forward_grad_norm": forward_grad_norm.item(), "backward_grad_norm": backward_grad_norm.item()})
+            wandb.log({"train/forward_grad_norm": forward_grad_norm.item(), "train/backward_grad_norm": backward_grad_norm.item()})
+            wandb.log({
+                "train/forward_loss": losses["next_loss"].item(), 
+                "train/backward_loss": losses["prev_loss"].item(), 
+                "train/orig_loss": losses["orig_loss"].item(),
+                "train/loss_weights_forward": self.gradnorm_weighter.loss_weights[0].item(),
+                "train/loss_weights_backward": self.gradnorm_weighter.loss_weights[1].item()
+            })
 
         scaler.step(optimizer)
         scaler.update()
         optimizer.zero_grad(set_to_none=True)
 
-        return logits, loss, accs
-    
-    # def star_graph_update(self, x, targets, optimizer, scaler, num_prefix_tokens, num_target_tokens):
-    #     """
-    #     Specialized training for the star graph problem.
-    #     """
-    #     # Compute forward states
-    #     self.model.set_adapter("forward_encoder")
-    #     forward_states = self.model(x).last_hidden_state
-    #     _f = forward_states.detach()
-    #     _f.requires_grad = True
-
-    #     # Compute backward states
-    #     self.model.set_adapter("backward_encoder")
-    #     backward_input = torch.flip(x, dims=[1])
-    #     backward_states = self.model(backward_input).last_hidden_state
-    #     _b = backward_states.detach()
-    #     _b.requires_grad = True
-
-    #     # Compute the combined loss
-    #     loss = self.belief_state_objective(_f, _b, x, targets)
-    #     scaler.scale(loss).backward()
-
-    #     self.model.set_adapter("forward_encoder")
-    #     forward_states.backward(_f.grad)
-
-    #     self.model.set_adapter("backward_encoder")
-    #     backward_states.backward(_b.grad)
-
-    #     self.model.set_adapter(["forward_encoder", "backward_encoder"])
-
-    #     scaler.step(optimizer)
-    #     scaler.update()
-    #     optimizer.zero_grad(set_to_none=True)
-
-    #     return loss
+        return logits, final_loss, accs
     
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=1):

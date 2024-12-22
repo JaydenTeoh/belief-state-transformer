@@ -28,6 +28,21 @@ parser.add_argument(
         "--lora_dropout", type=float, default=0.05, help="Lora dropout",
     )
 parser.add_argument(
+        "--use_grad_norm", action=argparse.BooleanOptionalAction, default=False, help="Use GradNorm to balance losses",
+    )
+parser.add_argument(
+        "--gradnorm_lr", type=float, default=1e-4, help="GradNorm learning rate",
+    )
+parser.add_argument(
+        "--gradnorm_alpha", type=float, default=0.12, help="GradNorm alpha",
+    )
+parser.add_argument(
+        "--clip_gradients", action=argparse.BooleanOptionalAction, default=False, help="Use gradient clipping",
+    )
+parser.add_argument(
+        "--clip_grad_norm", type=float, default=10.0, help="Clip gradient max norm",
+    )
+parser.add_argument(
         "--load_in_4bit", action=argparse.BooleanOptionalAction, default=False, help="Load in 4-bit",
     )
 parser.add_argument(
@@ -110,7 +125,7 @@ eval_interval = 5
 log_interval = 10
 
 # Optimiser
-dtype = 'float16' if args.load_in_4bit else 'float32'
+dtype = 'bfloat16' if args.load_in_4bit else 'float32'
 args.ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 beta1 = 0.9
 beta2 = 0.999
