@@ -87,7 +87,7 @@ class GradNormLossWeighter(nn.Module):
             self.to(losses.device)
 
         total_weighted_loss = (losses * self.loss_weights.detach()).sum() * scale
-        total_weighted_loss.backward(**backward_kwargs)
+        total_weighted_loss.backward(retain_graph=True, **backward_kwargs)
 
         if self.has_restoring_force:
             if not self.initted.item():
