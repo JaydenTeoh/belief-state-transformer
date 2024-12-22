@@ -4,6 +4,7 @@ from utils.training_utils import accuracy
 from torch.nn import functional as F
 import torch.nn as nn
 import torch
+import wandb
 
 class TiedTextHead(nn.Module):
     def __init__(self, input_dim, hidden_size, vocab_size, tied_weights=None):
@@ -36,7 +37,9 @@ class BeliefStateTransformer(nn.Module):
         if args.load_in_4bit:
             quantization_config = BitsAndBytesConfig(
                                     load_in_4bit=True,
-                                    bnb_4bit_compute_dtype=args.ptdtype
+                                    bnb_4bit_quant_type='nf4',
+                                    bnb_4bit_compute_dtype=args.ptdtype,
+                                    bnb_4bit_use_double_quant=True
                                 )
         else:
             # Assume default or no quantization
@@ -83,6 +86,9 @@ class BeliefStateTransformer(nn.Module):
                             vocab_size=args.vocab_size,
                             # tied_weights=self.model.transformer.wte.weight  # use input embeddings' weights
                         )
+        
+        # miscellanous
+        self.wandb_logging = args.use_wandb
         
     def get_num_params(self):
         trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -160,7 +166,6 @@ class BeliefStateTransformer(nn.Module):
         prev_labels = single_labels.view(-1, 2)[:, 1] 
         next_mask = next_labels != -1
         prev_mask = prev_labels != -1
-        valid_mask = single_labels != -1
 
         next_pred = torch.argmax(next_logits[next_mask], dim=-1)
         prev_pred = torch.argmax(prev_logits[prev_mask], dim=-1)
@@ -197,7 +202,7 @@ class BeliefStateTransformer(nn.Module):
         _b.requires_grad = True
 
         # Compute the combined loss
-        logits, loss, accs = self.belief_state_objective(_f, _b, x, y) # use the orig seq, i.e. x, as targets
+        logits, loss, accs = self.belief_state_objective(_f, _b, x, y)
         scaler.scale(loss).backward()
 
         self.model.set_adapter("forward_encoder")
@@ -207,6 +212,11 @@ class BeliefStateTransformer(nn.Module):
         backward_states.backward(_b.grad)
 
         self.model.set_adapter(["forward_encoder", "backward_encoder"])
+
+        if self.wandb_logging:
+            forward_grad_norm = torch.norm(torch.cat([p.grad.flatten() for n, p in self.named_parameters() if "forward_encoder" in n and p.grad is not None]))
+            backward_grad_norm = torch.norm(torch.cat([p.grad.flatten() for n, p in self.named_parameters() if "backward_encoder" in n and p.grad is not None]))
+            wandb.log({"forward_grad_norm": forward_grad_norm.item(), "backward_grad_norm": backward_grad_norm.item()})
 
         scaler.step(optimizer)
         scaler.update()

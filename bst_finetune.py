@@ -195,10 +195,11 @@ for ep in range(args.epochs):
              total_acc.get(percentage=True))
         )
 
-        wandb.log({"train/loss": loss.item(), "train/acc": accs["acc"],
-                    "train/forward_acc": accs["forward_acc"], 
-                    "train/backward_acc": accs["backward_acc"],
-                    "learning_rate": lr, "step": num_iters})
+        if wandb_log:
+            wandb.log({"train/loss": loss.item(), "train/acc": accs["acc"],
+                        "train/forward_acc": accs["forward_acc"], 
+                        "train/backward_acc": accs["backward_acc"],
+                        "learning_rate": lr, "step": num_iters})
 
         # evaluate the loss on train/val sets and write checkpoints
         if num_iters % args.eval_every == 0:
