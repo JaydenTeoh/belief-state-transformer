@@ -105,7 +105,6 @@ class GradNormLossWeighter(nn.Module):
         grad_norm_tensor.requires_grad_()
 
         # get grad norm with respect to each loss
-        grad_norms = []
         loss_weights = self.loss_weights.clone()
         loss_weights = Parameter(loss_weights)
         all_losses = (loss_weights * losses).sum()
@@ -125,7 +124,7 @@ class GradNormLossWeighter(nn.Module):
             gradient_target = grad_norm_average.repeat(self.num_losses).detach()
 
         grad_norm_loss = F.l1_loss(grad_norms, gradient_target) * scale
-        grad_norm_loss.backward(**backward_kwargs)
+        grad_norm_loss.backward(retain_graph=True, **backward_kwargs)
 
         # accumulate gradients
         self.loss_weights_grad.add_(loss_weights.grad)
