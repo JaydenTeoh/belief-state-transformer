@@ -147,13 +147,32 @@ class BeliefStateTransformer(nn.Module):
         loss = nn.CrossEntropyLoss(ignore_index=-1)(logits, single_labels)
 
         # calculate accuracy
+        logits_reshaped = logits.view(-1, 2, logits.size(-1))
+        next_logits = logits_reshaped[:, 0, :]
+        prev_logits = logits_reshaped[:, 1, :]
+
+        next_labels = single_labels.view(-1, 2)[:, 0] 
+        prev_labels = single_labels.view(-1, 2)[:, 1] 
+        next_mask = next_labels != -1
+        prev_mask = prev_labels != -1
         valid_mask = single_labels != -1
-        filtered_logits = logits[valid_mask]
-        filtered_labels = single_labels[valid_mask]
-        predictions = torch.argmax(filtered_logits, dim=-1)
-        correct = predictions.eq(filtered_labels).to(torch.float)
-        acc = correct.mean()
-        return logits, loss, acc
+
+        next_pred = torch.argmax(next_logits[next_mask], dim=-1)
+        prev_pred = torch.argmax(prev_logits[prev_mask], dim=-1)
+
+        next_correct = next_pred.eq(next_labels[next_mask]).to(torch.float)
+        prev_correct = prev_pred.eq(prev_labels[prev_mask]).to(torch.float)
+
+        next_acc = next_correct.mean().item()
+        prev_acc = prev_correct.mean().item()
+
+        total_valid_tokens = next_mask.sum() + prev_mask.sum()
+        overall_acc = (
+            next_correct.sum() + prev_correct.sum()
+        ).item() / total_valid_tokens.item()
+
+        accs = {"acc": overall_acc, "forward_acc": next_acc, "backward_acc": prev_acc}
+        return logits, loss, accs
     
     def update(self, x, y, optimizer, scaler):
         """
@@ -173,7 +192,7 @@ class BeliefStateTransformer(nn.Module):
         _b.requires_grad = True
 
         # Compute the combined loss
-        logits, loss, acc = self.belief_state_objective(_f, _b, x, y) # use the orig seq, i.e. x, as targets
+        logits, loss, accs = self.belief_state_objective(_f, _b, x, y) # use the orig seq, i.e. x, as targets
         scaler.scale(loss).backward()
 
         self.model.set_adapter("forward_encoder")
@@ -188,7 +207,7 @@ class BeliefStateTransformer(nn.Module):
         scaler.update()
         optimizer.zero_grad(set_to_none=True)
 
-        return logits, loss, acc
+        return logits, loss, accs
     
     # def star_graph_update(self, x, targets, optimizer, scaler, num_prefix_tokens, num_target_tokens):
     #     """
