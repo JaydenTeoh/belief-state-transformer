@@ -119,8 +119,8 @@ class BeliefStateTransformer(nn.Module):
         # nt_idxs = (combinations[:, 0] + 1)  # indices for next token labels
         # TODO: make this more general, currently y corresponds to next token labels of x, which means it is
         # shifted by 1
-        nt_idxs = combinations[:, 0]  # indices for next token labels
-        pt_idxs = (combinations[:, 0] - 2)  # indices for prev token labels
+        nt_idxs = f_idxs  # indices for next token labels
+        pt_idxs = (b_idxs - 2)  # indices for prev token labels
 
         # gather forward and backward features
         f = forward_states[:, f_idxs]
