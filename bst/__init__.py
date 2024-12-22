@@ -75,6 +75,7 @@ class BeliefStateTransformer(nn.Module):
         self.model.gradient_checkpointing_enable()
 
         # add tied text head for next and previous token predictions
+        self.vocab_size = args.vocab_size
         self.text_head = TiedTextHead(
                             input_dim=self.model.config.hidden_size * 2,
                             hidden_size=512, # TODO; allow this to be configurable
@@ -144,7 +145,11 @@ class BeliefStateTransformer(nn.Module):
         # all next and previous token predictions together, aligning with the paper
         # ignore_index=-1 is used to skip the gradient contributions from unnecessary tokens in target
         loss = nn.CrossEntropyLoss(ignore_index=-1)(logits, single_labels)
-        return loss
+        logits = logits.view(bs, fb_numpairs * 2, self.vocab_size)
+        single_labels = single_labels.view(bs, fb_numpairs * 2)
+        acc, token_acc = accuracy(logits, single_labels)
+        accs = {"acc": acc, "token_acc": token_acc}
+        return logits, loss, accs
     
     def update(self, x, y, optimizer, scaler):
         """
@@ -164,7 +169,7 @@ class BeliefStateTransformer(nn.Module):
         _b.requires_grad = True
 
         # Compute the combined loss
-        loss = self.belief_state_objective(_f, _b, x, y) # use the orig seq, i.e. x, as targets
+        logits, loss, accs = self.belief_state_objective(_f, _b, x, y) # use the orig seq, i.e. x, as targets
         scaler.scale(loss).backward()
 
         self.model.set_adapter("forward_encoder")
@@ -179,7 +184,7 @@ class BeliefStateTransformer(nn.Module):
         scaler.update()
         optimizer.zero_grad(set_to_none=True)
 
-        return loss
+        return logits, loss, accs
     
     # def star_graph_update(self, x, targets, optimizer, scaler, num_prefix_tokens, num_target_tokens):
     #     """
