@@ -68,7 +68,7 @@ class BeliefStateTransformer(nn.Module):
             lora_alpha=args.lora_alpha, 
             lora_dropout=args.lora_dropout, 
             target_modules=["c_attn"],  # apply lora to attention layers
-            layers_to_transform=[5,6,7,10,11],
+            layers_to_transform=[5,7,9,11],
             layers_pattern="h",
             bias="none",
             task_type="CAUSAL_LM",
@@ -90,15 +90,15 @@ class BeliefStateTransformer(nn.Module):
 
         # GradNorm
         self.use_grad_norm = args.use_grad_norm
-        if self.use_grad_norm:
-            backbone_parameter = self.text_head.shared_mlp[-1].weight
-            self.gradnorm_weighter = GradNormLossWeighter(
-                num_losses=2,  # next and prev token prediction tasks
-                learning_rate=args.gradnorm_lr,  # a small learning rate for GradNorm updates
-                restoring_force_alpha=args.gradnorm_alpha,  # hyperparameter to control task balancing
-                grad_norm_parameters=backbone_parameter, # update the loss weights wrt activations of last shared layer
-                initial_losses_decay=args.gradnorm_init_loss_decay  # decay factor for determining initial losses
-            )
+        # if self.use_grad_norm:
+        #     backbone_parameter = self.text_head.shared_mlp[-1].weight
+        #     self.gradnorm_weighter = GradNormLossWeighter(
+        #         num_losses=2,  # next and prev token prediction tasks
+        #         learning_rate=args.gradnorm_lr,  # a small learning rate for GradNorm updates
+        #         restoring_force_alpha=args.gradnorm_alpha,  # hyperparameter to control task balancing
+        #         grad_norm_parameters=backbone_parameter, # update the loss weights wrt activations of last shared layer
+        #         initial_losses_decay=args.gradnorm_init_loss_decay  # decay factor for determining initial losses
+        #     )
 
         # gradient clipping
         self.clip_gradients = args.clip_gradients
@@ -156,15 +156,17 @@ class BeliefStateTransformer(nn.Module):
         # shifted by 1
         nt_idxs = f_idxs  # indices for next token labels
         pt_idxs = (b_idxs - 2)  # indices for prev token labels
+        next_labels = targets[:, nt_idxs].reshape(-1)
+        prev_labels = targets[:, pt_idxs].reshape(-1)
 
         # gather forward and backward features
         f = forward_states[:, f_idxs]
         b = backward_states[:, b_idxs]
 
         # prepare labels
-        single_labels_f = targets[:, nt_idxs].unsqueeze(2)  # labels for next-token prediction
-        single_labels_b = targets[:, pt_idxs].unsqueeze(2)   # labels for prev-token prediction
-        single_labels = torch.cat((single_labels_f, single_labels_b), dim=2)
+        # single_labels_f = targets[:, nt_idxs].unsqueeze(2)  # labels for next-token prediction
+        # single_labels_b = targets[:, pt_idxs].unsqueeze(2)   # labels for prev-token prediction
+        # single_labels = torch.cat((single_labels_f, single_labels_b), dim=2)
 
         # compute logits from the text head
         logits = self.text_head(f, b)  # combine forward and backward states
@@ -176,10 +178,6 @@ class BeliefStateTransformer(nn.Module):
         # flatten logits and labels
         next_logits = logits[:, :, 0, :].reshape(-1, logits.size(-1)) 
         prev_logits = logits[:, :, 1, :].reshape(-1, logits.size(-1)) 
-
-        single_labels = single_labels.view(bs, fb_numpairs, 2)
-        next_labels = single_labels[:, :, 0].reshape(-1) 
-        prev_labels = single_labels[:, :, 1].reshape(-1)
 
         # compute the loss independently for next and previous token predictions
         # this also sums the negative log likelihood for 
@@ -220,7 +218,7 @@ class BeliefStateTransformer(nn.Module):
     
         return logits, losses, accs
     
-    def update(self, x, y, optimizer, scaler):
+    def update(self, x, y, optimizer, scaler, weighter):
         """
         Efficient training for the BST model.
         """
@@ -239,10 +237,10 @@ class BeliefStateTransformer(nn.Module):
 
         # Compute the combined loss
         logits, losses, accs = self.belief_state_objective(_f, _b, x, y)
-        if self.use_grad_norm:
+        if weighter is not None:
             # have to scale losses independently
             loss = torch.stack((scaler.scale(losses["next_loss"]), scaler.scale(losses["prev_loss"])), dim=0)
-            loss = self.gradnorm_weighter.backward(loss)
+            loss = weighter.backward(loss)
         else:
             loss = scaler.scale(losses["orig_loss"])
             loss.backward()
@@ -255,9 +253,9 @@ class BeliefStateTransformer(nn.Module):
 
         self.model.set_adapter(["forward_encoder", "backward_encoder"])
         
+        scaler.unscale_(optimizer)
         # gradient clipping
         if self.clip_gradients:
-            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(self.parameters(), self.clip_grad_norm)
 
         if self.wandb_logging:
@@ -268,8 +266,6 @@ class BeliefStateTransformer(nn.Module):
                 "train/forward_loss": losses["next_loss"].item(), 
                 "train/backward_loss": losses["prev_loss"].item(), 
                 "train/orig_loss": losses["orig_loss"].item(),
-                "train/loss_weights_forward": self.gradnorm_weighter.loss_weights[0].item(),
-                "train/loss_weights_backward": self.gradnorm_weighter.loss_weights[1].item()
             })
 
         scaler.step(optimizer)

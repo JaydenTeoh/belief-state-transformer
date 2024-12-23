@@ -10,6 +10,7 @@ from utils.training_utils import get_lr, get_run_name, AverageMeter
 from data import get_dataset
 from evaluate import evaluate, evaluate_forced
 from bst import BeliefStateTransformer
+from bst.grad_norm import GradNormLossWeighter
 
 
 # Parse arguments
@@ -19,10 +20,10 @@ parser.add_argument(
         "--model", default='gpt2', type=str, help="Type of model"
     )
 parser.add_argument(
-        "--lora_r", type=int, default=16, help="Lora r",
+        "--lora_r", type=int, default=32, help="Lora r",
     )
 parser.add_argument(
-        "--lora_alpha", type=int, default=16, help="Lora alpha",
+        "--lora_alpha", type=int, default=64, help="Lora alpha",
     )
 parser.add_argument(
         "--lora_dropout", type=float, default=0.05, help="Lora dropout",
@@ -34,10 +35,13 @@ parser.add_argument(
         "--gradnorm_lr", type=float, default=1e-4, help="GradNorm learning rate",
     )
 parser.add_argument(
-        "--gradnorm_alpha", type=float, default=0.12, help="GradNorm alpha",
+        "--gradnorm_update_every", type=float, default=100.0, help="Update weightages for loss interval",
     )
 parser.add_argument(
-        "--gradnorm_init_loss_decay", type=float, default=0.9, help="GradNorm alpha",
+        "--gradnorm_alpha", type=float, default=1.5, help="GradNorm alpha",
+    )
+parser.add_argument(
+        "--gradnorm_init_loss_decay", type=float, default=0.95, help="GradNorm alpha",
     )
 parser.add_argument(
         "--clip_gradients", action=argparse.BooleanOptionalAction, default=False, help="Use gradient clipping",
@@ -171,6 +175,17 @@ print(f"Number of trainable parameters: {model.get_num_params()}")
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
 optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, betas=(beta1, beta2))
+if args.use_grad_norm:
+    loss_weighter = GradNormLossWeighter(
+        num_losses = 2,
+        learning_rate = args.gradnorm_lr,
+        restoring_force_alpha = args.gradnorm_alpha, 
+        grad_norm_parameters = model.text_head.shared_mlp[-1].weight,
+        initial_losses_decay = args.gradnorm_init_loss_decay,
+        update_every=args.gradnorm_update_every
+    )
+else:
+    loss_weighter = None
 ctx = nullcontext() if device == 'cpu' else torch.amp.autocast(device_type=device, dtype=args.ptdtype)
 
 # Setup wandb logging
@@ -195,8 +210,8 @@ for ep in range(args.epochs):
             param_group['lr'] = lr
 
         with ctx:
-            logits, loss, accs = model.update(x, y, optimizer, scaler)
-
+            logits, loss, accs = model.update(x, y, optimizer, scaler, loss_weighter)
+        
         total_loss.update(loss.item(), x.shape[0] * train_data.num_target_tokens)
         total_acc.update(accs["acc"], x.shape[0] * train_data.num_target_tokens)
         # Backpropagation with mixed precision
@@ -218,6 +233,11 @@ for ep in range(args.epochs):
                         "train/forward_acc": accs["forward_acc"], 
                         "train/backward_acc": accs["backward_acc"],
                         "learning_rate": lr, "step": num_iters})
+        if args.use_grad_norm:
+            wandb.log({
+                "train/loss_weights_forward": loss_weighter.loss_weights[0].item(),
+                "train/loss_weights_backward": loss_weighter.loss_weights[1].item()
+            })
 
         # evaluate the loss on train/val sets and write checkpoints
         if num_iters % args.eval_every == 0:
