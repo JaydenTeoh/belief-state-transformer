@@ -186,7 +186,7 @@ args.ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16':
 args.beta1 = 0.9
 args.beta2 = 0.999
 args.decay_lr = True
-args.compile = True if device == 'cuda' else False
+args.compile = False if device == 'cuda' else False # currently doesn't work cos of double backward
 args.use_flash = True if device == 'cuda' and args.load_in_4bit else False
 args.warmup_iters = 100
 args.min_lr = 1e-5

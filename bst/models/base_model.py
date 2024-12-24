@@ -116,13 +116,28 @@ class BaseBST(BeliefStateTransformer):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def get_latent_states(self, x, direction):
+    def get_latent_states(self, idx, direction):
         """
         Get the forward or backward latent states of the model.
         """
-        _, seq_len = x.size()
+        device = idx.device
+        _, seq_len = idx.size()
         assert seq_len <= self.config.block_size, f"Cannot forward sequence of length {seq_len}, block size is only " \
                                                   f"{self.config.block_size}"
+        tok_emb = self.embed_tokens(idx)
+        if self.use_cache:
+            if direction == "forward" and self.forward_encoder.cache.use_caching:
+                start_pos = self.forward_encoder.cache.cur_seq_len[0]
+            elif direction == "backward" and self.backward_encoder.cache.use_caching:
+                start_pos = self.backward_encoder.cache.cur_seq_len[0]
+            else:
+                start_pos = 0
+        else:
+            start_pos = 0
+        pos = torch.arange(start_pos, seq_len + start_pos, dtype=torch.long, device=device).unsqueeze(0)
+        pos_emb = self.pos_encoding(pos)
+        x = tok_emb + pos_emb
+
         if direction == "forward":
             return self.forward_encoder(x)
         
