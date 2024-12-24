@@ -1,0 +1,1 @@
+python3 bst_train.py --pretrained --model gpt2 --n_train 1000000 --n_test 10000 --batch_size 4 --dataset graph --deg 5 --path 5 --num_nodes 50 --text_head_hidden 512 --text_head_layers 3 --lr 0.00001 --weight_decay 0.01 --use_grad_norm --gradnorm_alpha 3.0 --add_eos --load_in_4bit --use_wandb

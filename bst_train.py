@@ -51,7 +51,7 @@ parser.add_argument(
         "--max_bsz", type=int, default=16, help="Max batch size",
     )
 parser.add_argument(
-        "--use_cache", action=argparse.BooleanOptionalAction, default=True, help="USe KV cache",
+        "--use_cache", action=argparse.BooleanOptionalAction, default=False, help="Use KV cache",
     )
 
 # pretrained model
@@ -101,7 +101,7 @@ parser.add_argument(
         "--clip_gradients", action=argparse.BooleanOptionalAction, default=False, help="Use gradient clipping",
     )
 parser.add_argument(
-        "--clip_grad_norm", type=float, default=10.0, help="Clip gradient max norm",
+        "--clip_grad_norm", type=float, default=1000.0, help="Clip gradient max norm",
     )
 
 parser.add_argument(
