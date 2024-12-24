@@ -79,9 +79,6 @@ class BSTTrainer:
             loss.backward()
 
         if self.detach_grad:
-            print("forward shapes", forward_states.shape)
-            print("backward", backward_states)
-            print("grads", _f.grad.shape, _b.grad.shape)
             self.model.set_encoder("forward_encoder")
             forward_states.backward(_f.grad)
 
