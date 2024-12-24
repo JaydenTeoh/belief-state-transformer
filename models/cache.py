@@ -5,7 +5,7 @@ class Cache:
     def __init__(self, config, use_caching=False):
         self.config = config
         self.use_caching = use_caching
-        self.dtype = config.dtype
+        self.dtype = config.ptdtype
 
         self.seq_len = config.block_size
         self.max_bsz = config.max_bsz

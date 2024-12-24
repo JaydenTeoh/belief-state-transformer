@@ -6,18 +6,60 @@ from torch.utils.data import DataLoader
 import wandb
 
 from tokenizing import get_tokenizer
-from utils.training_utils import get_lr, get_run_name, AverageMeter
+from utils.training_utils import get_run_name, AverageMeter
 from data import get_dataset
-from evaluate import evaluate, evaluate_forced
-from bst import BeliefStateTransformer
-from bst.grad_norm import GradNormLossWeighter
+from evaluate import evaluate
+from bst.trainer import BSTTrainer
 
 
 # Parse arguments
 parser = argparse.ArgumentParser(description="Next-token prediction")
 # Data
 parser.add_argument(
+        "--pretrained", action=argparse.BooleanOptionalAction, default=False, help="Whether to train from scratch or use a pretrained model",
+    )
+parser.add_argument(
+        "--text_head_layers", type=int, default=3, help="Number of layers in the text head",
+    )
+parser.add_argument(
+        "--text_head_hidden", type=int, default=512, help="Hidden dim of the text head",
+    )
+parser.add_argument(
+        "--add_eos", action=argparse.BooleanOptionalAction, default=False, help="Add eos token to end of tokenized sequence (act as empty suffix for backward encoder)",
+    )
+
+# base model
+parser.add_argument(
+        "--n_layers", type=int, default=6, help="Number of layers",
+    )
+parser.add_argument(
+        "--n_embd", type=int, default=768, help="Embedding size",
+    )
+parser.add_argument(
+        "--n_heads", type=int, default=8, help="Number of heads",
+    )
+parser.add_argument(
+        "--block_size", type=int, default=1024, help="Block size",
+    )
+parser.add_argument(
+        "--bias", type=bool, default=True, help="Use bias in Linears and LayerNorms, like GPT-2. Default True.",
+    )
+parser.add_argument(
+        "--dropout", type=float, default=0.0, help="Dropout",
+    )
+parser.add_argument(
+        "--max_bsz", type=int, default=16, help="Max batch size",
+    )
+parser.add_argument(
+        "--use_cache", action=argparse.BooleanOptionalAction, default=False, help="Use KV cache",
+    )
+
+# pretrained model
+parser.add_argument(
         "--model", default='gpt2', type=str, help="Type of model"
+    )
+parser.add_argument(
+        "--load_in_4bit", action=argparse.BooleanOptionalAction, default=False, help="Load in 4-bit",
     )
 parser.add_argument(
         "--lora_r", type=int, default=32, help="Lora r",
@@ -28,6 +70,18 @@ parser.add_argument(
 parser.add_argument(
         "--lora_dropout", type=float, default=0.05, help="Lora dropout",
     )
+parser.add_argument(
+        "--lora_layers", type=list, default=[5, 7, 9, 11], help="Lora layers",
+    )
+parser.add_argument(
+        "--lora_layer_pattern", type=str, default="h", help="Lora layers pattern",
+    )
+parser.add_argument(
+        "--lora_target_modules", type=list, default=["c_attn"], help="Lora target modules",
+    )
+
+
+# training
 parser.add_argument(
         "--use_grad_norm", action=argparse.BooleanOptionalAction, default=False, help="Use GradNorm to balance losses",
     )
@@ -47,14 +101,9 @@ parser.add_argument(
         "--clip_gradients", action=argparse.BooleanOptionalAction, default=False, help="Use gradient clipping",
     )
 parser.add_argument(
-        "--clip_grad_norm", type=float, default=10.0, help="Clip gradient max norm",
+        "--clip_grad_norm", type=float, default=1000.0, help="Clip gradient max norm",
     )
-parser.add_argument(
-        "--load_in_4bit", action=argparse.BooleanOptionalAction, default=False, help="Load in 4-bit",
-    )
-parser.add_argument(
-        "--add_eos", action=argparse.BooleanOptionalAction, default=False, help="Add eos token to end of tokenized sequence",
-    )
+
 parser.add_argument(
     "--dataset", default='graph', type=str, help="Choice of dataset"
     )
@@ -116,6 +165,7 @@ parser.add_argument(
 args = parser.parse_args()
 # System stuff
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+args.device = device
 wandb_entity = args.wandb_entity
 wandb_log = args.use_wandb
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -134,13 +184,13 @@ log_interval = 10
 # Optimiser
 dtype = 'bfloat16' if args.load_in_4bit else 'float32'
 args.ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-beta1 = 0.9
-beta2 = 0.999
-decay_lr = True
-args.compile = True if device == 'cuda' else False
+args.beta1 = 0.9
+args.beta2 = 0.999
+args.decay_lr = True
+args.compile = False if device == 'cuda' else False # currently doesn't work cos of double backward
 args.use_flash = True if device == 'cuda' and args.load_in_4bit else False
-warmup_iters = 100
-min_lr = 1e-5
+args.warmup_iters = 100
+args.min_lr = 1e-5
 
 run_name = get_run_name(args)
 path = './checkpoints/' + run_name + '.pt'
@@ -149,43 +199,19 @@ path = './checkpoints/' + run_name + '.pt'
 args.add_eos = True # IMPORTANT: add eos token to the end of the sequence for BST training
 tokenizer = get_tokenizer(args)
 if args.add_eos: # IMPORTANT: eos token for null BST suffix during generation
-    args.eos_token_id = tokenizer.eos_token_id
+    args.empty_suffix_id = tokenizer.eos_token_id
 train_data, test_data = get_dataset(args, tokenizer, device)
 
 train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
 test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True)
 
 max_iters = len(train_data) * args.epochs
-lr_decay_iters = max_iters
+args.lr_decay_iters = max_iters
 
-args.block_size = train_data.num_tokens
+args.block_size = train_data.num_tokens + 1 if args.add_eos else train_data.num_tokens
 args.vocab_size = tokenizer.vocab_size
 args.teacherless_token = tokenizer.encode('$')[0] if args.teacherless else None
-model = BeliefStateTransformer(args)
-
-if args.compile:
-    print("compiling the model... (takes a ~minute)")
-    model = torch.compile(model)
-
-model.to(device)
-model.train()
-
-print(f"Number of trainable parameters: {model.get_num_params()}")
-
-# initialize a GradScaler. If enabled=False scaler is a no-op
-scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
-optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, betas=(beta1, beta2))
-if args.use_grad_norm:
-    loss_weighter = GradNormLossWeighter(
-        num_losses = 2,
-        learning_rate = args.gradnorm_lr,
-        restoring_force_alpha = args.gradnorm_alpha, 
-        grad_norm_parameters = model.text_head.shared_mlp[-1].weight,
-        initial_losses_decay = args.gradnorm_init_loss_decay,
-        update_every=args.gradnorm_update_every
-    )
-else:
-    loss_weighter = None
+trainer = BSTTrainer(args, device)
 ctx = nullcontext() if device == 'cpu' else torch.amp.autocast(device_type=device, dtype=args.ptdtype)
 
 # Setup wandb logging
@@ -197,20 +223,14 @@ results = {}
 num_iters = 0
 
 for ep in range(args.epochs):
-    if ep % args.save_every == 0 and ep > 0:
-        torch.save(model.state_dict(), path + "_epoch_" + str(ep))
-
     train_bar = tqdm(train_loader)
     total_loss, total_acc = AverageMeter(), AverageMeter()
 
     for x, y in train_bar:
+        if num_iters % args.save_every == 0 and num_iters > 0:
+            trainer.save(path, ep)
         # determine and set the learning rate for this iteration
-        lr = get_lr(num_iters, args.lr, warmup_iters, lr_decay_iters, min_lr) if decay_lr else args.lr
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
-
-        with ctx:
-            logits, loss, accs = model.update(x, y, optimizer, scaler, loss_weighter)
+        logits, loss, accs = trainer.step(x, y, ctx)
         
         total_loss.update(loss.item(), x.shape[0] * train_data.num_target_tokens)
         total_acc.update(accs["acc"], x.shape[0] * train_data.num_target_tokens)
@@ -228,25 +248,14 @@ for ep in range(args.epochs):
              total_acc.get(percentage=True))
         )
 
-        if wandb_log:
-            wandb.log({"train/loss": loss.item(), "train/acc": accs["acc"],
-                        "train/forward_acc": accs["forward_acc"], 
-                        "train/backward_acc": accs["backward_acc"],
-                        "learning_rate": lr, "step": num_iters})
-        if args.use_grad_norm:
-            wandb.log({
-                "train/loss_weights_forward": loss_weighter.loss_weights[0].item(),
-                "train/loss_weights_backward": loss_weighter.loss_weights[1].item()
-            })
-
         # evaluate the loss on train/val sets and write checkpoints
         if num_iters % args.eval_every == 0:
             # Generate sequences and check accuracies
             if args.eval_train:
-                results = evaluate(model, train_loader, temperature=0.8, top_k=top_k, results=results, mode='train', remove_eos=args.add_eos)
+                results = evaluate(trainer.model, train_loader, temperature=0.8, top_k=top_k, results=results, mode='train', remove_eos=args.add_eos)
                 # results = evaluate_forced(model, train_loader, results=results, mode='train')
 
-            results = evaluate(model, test_loader, temperature=0.8, ctx=ctx, top_k=top_k, results=results, mode='test', remove_eos=args.add_eos)
+            results = evaluate(trainer.model, test_loader, temperature=0.8, ctx=ctx, top_k=top_k, results=results, mode='test', remove_eos=args.add_eos)
             # results = evaluate_forced(model, test_loader, ctx=ctx, results=results, mode='test')
 
             if wandb_log:
