@@ -208,7 +208,7 @@ test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True)
 max_iters = len(train_data) * args.epochs
 args.lr_decay_iters = max_iters
 
-args.block_size = train_data.num_tokens + 1 if args.add_eos else train_data.num_tokens
+args.block_size = train_data.num_tokens
 args.vocab_size = tokenizer.vocab_size
 args.teacherless_token = tokenizer.encode('$')[0] if args.teacherless else None
 trainer = BSTTrainer(args, device)

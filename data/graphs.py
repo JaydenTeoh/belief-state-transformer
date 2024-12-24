@@ -140,8 +140,9 @@ class Graphs(Dataset):
             
             for idx in range(len(self.tokenized)):
                 self.tokenized[idx] = torch.cat([self.tokenized[idx], torch.tensor([eos_token_id])])
-
+        
         self.num_tokens = self.num_prefix_tokens + self.num_target_tokens
+        self.num_tokens = self.num_tokens + 1 if add_eos else self.num_tokens
 
     def __len__(self):
         return len(self.data_file)
@@ -230,12 +231,12 @@ if __name__ == '__main__':
     # Create graphs and save
     n_train = 200000
     n_test = 20000
-    deg = 2
+    deg = 5
     path_len = 5
     num_nodes = 50
     reverse = False
-    generate_and_save(n_train=n_train, n_test=n_test, degSource=deg, pathLen=path_len, numNodes=num_nodes,
-                      reverse=reverse)
+    # generate_and_save(n_train=n_train, n_test=n_test, degSource=deg, pathLen=path_len, numNodes=num_nodes,
+    #                   reverse=reverse)
 
     # Load data
     device = 'cpu'
@@ -248,12 +249,12 @@ if __name__ == '__main__':
     args.reverse = False
 
     args.dollar = 11
-    tokenizer = get_tokenizer(args)
-    trainset, testset = get_dataset(args, tokenizer, device)
-    print(trainset.num_tokens)
-    trainset.__getitem__(10)
-    trainset.eval()
-    trainset.__getitem__(10)
+    # tokenizer = get_tokenizer(args)
+    # trainset, testset = get_dataset(args, tokenizer, device)
+    # print(trainset.num_tokens)
+    # trainset.__getitem__(10)
+    # trainset.eval()
+    # trainset.__getitem__(10)
 
     import matplotlib.pyplot as plt
     import networkx as nx
@@ -264,5 +265,31 @@ if __name__ == '__main__':
     print('Start:', start, 'Goal:', goal)
     G = nx.Graph()
     G.add_edges_from(edge_list)
-    nx.draw(G, with_labels=True)
+
+    # Node colors
+    node_colors = []
+    for node in G.nodes():
+        if node in path:
+            node_colors.append("green")
+        else:
+            node_colors.append("pink")
+
+    # Edge color
+    edge_colors = "black"
+
+    # Layout for straight paths
+    pos = nx.star_graph(G, seed=42)  # Customize layout for straight paths
+
+    # Plot the graph
+    plt.figure(figsize=(8, 8))
+    nx.draw(
+        G,
+        pos,
+        with_labels=True,
+        edge_color=edge_colors,
+        node_color=node_colors,
+        node_size=500,
+        font_size=10,
+    )
+    plt.title(f"({deg}, {path_len}) Star Graph Problem", fontsize=16)
     plt.show()

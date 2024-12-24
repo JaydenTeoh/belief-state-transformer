@@ -27,12 +27,12 @@ class BSTTrainer:
         self.model.to(device=device, dtype=args.ptdtype)
         self.model.train()
 
-        # initialize a GradScaler. If enabled=False scaler is a no-op
         self.lr = args.lr
         self.decay_lr = args.decay_lr
         self.warmup_iters = args.warmup_iters
         self.lr_decay_iters = args.lr_decay_iters
         self.min_lr = args.min_lr
+        # initialize a GradScaler. If enabled=False scaler is a no-op
         self.scaler = torch.cuda.amp.GradScaler(enabled=(args.ptdtype == 'float16'))
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=args.lr, \
                                            weight_decay=args.weight_decay, betas=(args.beta1, args.beta2))
