@@ -212,9 +212,7 @@ class BeliefStateTransformer(nn.Module, ABC):
         else:
             # Step 1: Precompute backward latent state for empty suffix B(∅)
             bsz, _ = x.shape
-            backward_state = self.get_backward_suffix_latent()  # generate/get cached backward state
-            hidden_dim = backward_state.size(0)
-            backward_state = self.get_backward_suffix_latent(x).expand(bsz, 1, hidden_dim)
+            backward_state = self.get_backward_suffix_latent().repeat(bsz, 1, 1)  # generate/get cached backward state
             forward_state = self.get_latent_states(x, direction="forward")[:, -1:, :]
 
             # Step 4: Compute logits for the next token prediction
@@ -247,7 +245,7 @@ class BeliefStateTransformer(nn.Module, ABC):
             idx_cond = idx if idx.size(1) <= self.block_size else idx[:, -self.block_size:]
 
             # compute logits for the next token prediction
-            logits, _, _ = self(idx_cond)
+            logits, _, _, _ = self(idx_cond)
             next_logits = logits[:, 0, :self.text_head.output_layer.out_features // 2] # extract next token logits
 
             # apply temperature scaling

@@ -20,7 +20,7 @@ class PretrainBST(BeliefStateTransformer):
             quantization_config = BitsAndBytesConfig(
                                     load_in_4bit=True,
                                     bnb_4bit_quant_type='nf4',
-                                    bnb_4bit_compute_dtype=args.dtype,
+                                    bnb_4bit_compute_dtype=args.ptdtype,
                                     bnb_4bit_use_double_quant=True
                                 )
         else:
@@ -37,8 +37,9 @@ class PretrainBST(BeliefStateTransformer):
         self.model = AutoModelForCausalLM.from_pretrained(
             args.model, 
             attn_implementation=attn_implementation,
-            torch_dtype=args.dtype,
-            quantization_config=quantization_config
+            torch_dtype=args.ptdtype,
+            quantization_config=quantization_config,
+            device_map="auto"
         )
         args.n_embd = self.model.config.hidden_size
         self.create_text_head(args)

@@ -1,7 +1,6 @@
 import torch
 from torch.nn import functional as F
 import wandb
-from contextlib import nullcontext
 
 from bst.helpers import get_bst_model
 from bst.grad_norm import GradNormLossWeighter
@@ -25,7 +24,7 @@ class BSTTrainer:
             print("compiling the model... (takes a ~minute)")
             self.model = torch.compile(self.model)
 
-        self.model.to(device)
+        self.model.to(device=device, dtype=args.ptdtype)
         self.model.train()
 
         # initialize a GradScaler. If enabled=False scaler is a no-op
@@ -34,7 +33,7 @@ class BSTTrainer:
         self.warmup_iters = args.warmup_iters
         self.lr_decay_iters = args.lr_decay_iters
         self.min_lr = args.min_lr
-        self.scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype == 'float16'))
+        self.scaler = torch.cuda.amp.GradScaler(enabled=(args.ptdtype == 'float16'))
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=args.lr, \
                                            weight_decay=args.weight_decay, betas=(args.beta1, args.beta2))
         if args.use_grad_norm:
@@ -51,7 +50,7 @@ class BSTTrainer:
 
         self.num_iters = 0
 
-    def step(self, x, y):
+    def step(self, x, y, ctx):
         """
         Efficient training for the BST model.
         """
@@ -62,7 +61,8 @@ class BSTTrainer:
             param_group['lr'] = lr
 
         # Compute the combined loss
-        logits, losses, accs, states = self.model(x, y, self.detach_grad)
+        with ctx:
+            logits, losses, accs, states = self.model(x, y, self.detach_grad)
         if self.detach_grad:
             _f, _b, forward_states, backward_states = states
 

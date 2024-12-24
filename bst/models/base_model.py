@@ -85,14 +85,14 @@ class BaseBST(BeliefStateTransformer):
 
         if non_embedding:
             # Count the parameters of the embedding and head if not tied
-            if self.embed_tokens != self.lm_head:
-                non_emb_params -= self.embed_tokens.weight.numel()
-                non_emb_params -= self.lm_head.weight.numel()
-            else:
-                non_emb_params -= self.embed_tokens.weight.numel()
+            # if self.embed_tokens != self.lm_head:
+            #     non_emb_params -= self.embed_tokens.weight.numel()
+            #     non_emb_params -= self.lm_head.weight.numel()
+            # else:
+            non_emb_params -= self.embed_tokens.weight.numel()
             # Subtract positional embeddings if used
-            if self.pos_encoding(torch.tensor([1, 2, 3])) != 0:
-                non_emb_params -= self.pos_encoding.weight
+            non_emb_params -= self.pos_encoding.weight.numel()
+            non_emb_params = non_emb_params
 
         return all_params, non_emb_params
     

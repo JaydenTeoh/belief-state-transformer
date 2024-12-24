@@ -30,13 +30,25 @@ parser.add_argument(
 
 # base model
 parser.add_argument(
-        "--n_layer", type=int, default=6, help="Number of layers",
+        "--n_layers", type=int, default=6, help="Number of layers",
     )
 parser.add_argument(
         "--n_embd", type=int, default=768, help="Embedding size",
     )
 parser.add_argument(
-        "--n_head", type=int, default=6, help="Number of heads",
+        "--n_heads", type=int, default=8, help="Number of heads",
+    )
+parser.add_argument(
+        "--block_size", type=int, default=1024, help="Block size",
+    )
+parser.add_argument(
+        "--bias", type=bool, default=True, help="Use bias in Linears and LayerNorms, like GPT-2. Default True.",
+    )
+parser.add_argument(
+        "--dropout", type=float, default=0.0, help="Dropout",
+    )
+parser.add_argument(
+        "--max_bsz", type=int, default=16, help="Max batch size",
     )
 parser.add_argument(
         "--use_cache", action=argparse.BooleanOptionalAction, default=True, help="USe KV cache",
@@ -170,7 +182,7 @@ log_interval = 10
 
 # Optimiser
 dtype = 'bfloat16' if args.load_in_4bit else 'float32'
-args.dtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+args.ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 args.beta1 = 0.9
 args.beta2 = 0.999
 args.decay_lr = True
@@ -195,11 +207,11 @@ test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True)
 max_iters = len(train_data) * args.epochs
 args.lr_decay_iters = max_iters
 
-args.block_size = train_data.num_tokens
+args.block_size = train_data.num_tokens + 1 if args.add_eos else train_data.num_tokens
 args.vocab_size = tokenizer.vocab_size
 args.teacherless_token = tokenizer.encode('$')[0] if args.teacherless else None
 trainer = BSTTrainer(args, device)
-ctx = nullcontext() if device == 'cpu' else torch.amp.autocast(device_type=device, dtype=args.dtype)
+ctx = nullcontext() if device == 'cpu' else torch.amp.autocast(device_type=device, dtype=args.ptdtype)
 
 # Setup wandb logging
 if wandb_log:
@@ -210,16 +222,14 @@ results = {}
 num_iters = 0
 
 for ep in range(args.epochs):
-    if ep % args.save_every == 0 and ep > 0:
-        trainer.save(path, ep)
-
     train_bar = tqdm(train_loader)
     total_loss, total_acc = AverageMeter(), AverageMeter()
 
     for x, y in train_bar:
+        if num_iters % args.save_every == 0 and num_iters > 0:
+            trainer.save(path, ep)
         # determine and set the learning rate for this iteration
-        with ctx:
-            logits, loss, accs = trainer.step(x, y)
+        logits, loss, accs = trainer.step(x, y, ctx)
         
         total_loss.update(loss.item(), x.shape[0] * train_data.num_target_tokens)
         total_acc.update(accs["acc"], x.shape[0] * train_data.num_target_tokens)
