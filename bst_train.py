@@ -165,6 +165,7 @@ parser.add_argument(
 args = parser.parse_args()
 # System stuff
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+args.device = device
 wandb_entity = args.wandb_entity
 wandb_log = args.use_wandb
 torch.backends.cuda.matmul.allow_tf32 = True

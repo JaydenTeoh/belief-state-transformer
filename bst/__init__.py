@@ -39,6 +39,7 @@ class BeliefStateTransformer(nn.Module, ABC):
 
     def __init__(self, args):
         super().__init__()
+        self.device = args.device
 
          # for B(∅) in the backward encoder
         assert args.empty_suffix_id is not None, "Please provide backward encoder empty suffix."
@@ -112,7 +113,7 @@ class BeliefStateTransformer(nn.Module, ABC):
         If the cache is invalid, it will be recomputed.
         """
         if not self.cache_valid:
-            empty_suffix = torch.tensor([self.empty_suffix_id]).unsqueeze(0)
+            empty_suffix = torch.tensor([self.empty_suffix_id]).unsqueeze(0).to(self.device)
             backward_state = self.get_latent_states(empty_suffix, direction="backward")  # fixed backward state
             self._backward_suffix_cache = backward_state
             self.cache_valid = True
@@ -212,7 +213,7 @@ class BeliefStateTransformer(nn.Module, ABC):
         else:
             # Step 1: Precompute backward latent state for empty suffix B(∅)
             bsz, _ = x.shape
-            backward_state = self.get_backward_suffix_latent().repeat(bsz, 1, 1).to(x.device)  # generate/get cached backward state
+            backward_state = self.get_backward_suffix_latent().repeat(bsz, 1, 1)  # generate/get cached backward state
             forward_state = self.get_latent_states(x, direction="forward")[:, -1:, :]
 
             # Step 4: Compute logits for the next token prediction
